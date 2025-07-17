@@ -14,4 +14,4 @@ npm-debug.log
 .DS_Store
 
 # Media files
-media_files/
+/media_files/
