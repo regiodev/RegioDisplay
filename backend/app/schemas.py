@@ -85,6 +85,7 @@ class ScreenCreate(ScreenBase):
 class ScreenPublic(ScreenBase):
     id: int
     unique_key: str
+    last_seen: Optional[datetime] = None
     # Afișăm și playlist-ul asignat, dacă există
     assigned_playlist: Optional[PlaylistPublic] = None
 
@@ -103,3 +104,6 @@ class ClientPlaylistItem(BaseModel):
 class ClientPlaylistResponse(BaseModel):
     name: str
     items: List[ClientPlaylistItem]
+
+class ClientSyncRequest(BaseModel):
+    unique_key: str

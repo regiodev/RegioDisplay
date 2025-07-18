@@ -1,6 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session, joinedload
+from datetime import datetime
 
 from .. import models, schemas
 from ..database import get_db
@@ -29,6 +30,9 @@ def sync_client_playlist(
 
     if not screen:
         raise HTTPException(status_code=404, detail="Screen not registered")
+
+    screen.last_seen = datetime.utcnow()
+    db.commit()
 
     # 2. Verifică dacă are un playlist asignat
     if not screen.assigned_playlist:

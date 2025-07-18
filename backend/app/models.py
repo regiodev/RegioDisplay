@@ -44,7 +44,6 @@ class Playlist(Base):
     # Relația cu PlaylistItem (elementele din playlist)
     items = relationship("PlaylistItem", back_populates="playlist", cascade="all, delete-orphan")
 
-
 class PlaylistItem(Base):
     __tablename__ = "playlist_items"
 
@@ -69,6 +68,7 @@ class Screen(Base):
 
     # Cheia unică pentru împerecherea cu dispozitivul fizic
     unique_key = Column(String, unique=True, index=True, nullable=False)
+    last_seen = Column(DateTime, nullable=True)
 
     # Relația cu User (cine a înregistrat ecranul)
     created_by_id = Column(Integer, ForeignKey("users.id"))
