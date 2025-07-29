@@ -15,3 +15,29 @@ npm-debug.log
 
 # Media files
 media_files/
+
+# General
+*.log
+.DS_Store
+*.env
+*.iml
+
+# Backend
+backend/__pycache__/
+backend/*.sqlite3
+backend/venv/
+
+# Frontend (React)
+signage-frontend/node_modules/
+signage-frontend/.env
+signage-frontend/build/
+signage-frontend/dist/
+signage-frontend/node_modules/
+
+# Player (Android)
+RegioPlayerV2/.gradle/
+RegioPlayerV2/.idea/
+RegioPlayerV2/build/
+RegioPlayerV2/app/build/
+RegioPlayerV2/app/release/
+RegioPlayerV2/local.properties
