@@ -1,7 +1,10 @@
+# Cale fișier: app/schemas.py
+
 from pydantic import BaseModel, EmailStr
-from typing import Optional
-from typing import List
+from typing import List, Optional, Generic, TypeVar
 from datetime import datetime
+from pydantic.generics import GenericModel
+
 
 # Schema pentru crearea unui user
 class UserCreate(BaseModel):
@@ -16,11 +19,13 @@ class UserPublic(BaseModel):
     email: EmailStr
     username: str
     is_admin: bool
+    disk_quota_mb: int
+    current_usage_mb: float = 0.0
 
     class Config:
         from_attributes = True
 
-# Schema pentru token-ul JWT (aceasta lipsea sau era incorectă)
+# Schema pentru token-ul JWT
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -34,7 +39,9 @@ class MediaFilePublic(BaseModel):
     filename: str
     type: str
     size: int
+    duration: Optional[float] = None
     tags: Optional[str] = None
+    thumbnail_path: Optional[str] = None
     uploaded_at: datetime
 
     class Config:
@@ -44,14 +51,14 @@ class MediaFilePublic(BaseModel):
 class PlaylistItemBase(BaseModel):
     mediafile_id: int
     order: int
-    duration: int # în secunde
+    duration: int
 
 class PlaylistItemCreate(PlaylistItemBase):
     pass
 
 class PlaylistItemPublic(PlaylistItemBase):
     id: int
-    media_file: MediaFilePublic # Afișăm detaliile fișierului media
+    media_file: MediaFilePublic
 
     class Config:
         from_attributes = True
@@ -63,13 +70,14 @@ class PlaylistBase(BaseModel):
     schedule_end: Optional[datetime] = None
 
 class PlaylistCreate(PlaylistBase):
-    # La creare, primim o listă de elemente
     items: List[PlaylistItemCreate]
 
 class PlaylistPublic(PlaylistBase):
     id: int
-    # Afișăm elementele complete ale playlist-ului
     items: List[PlaylistItemPublic] = []
+    # --- AICI ESTE MODIFICAREA ---
+    # Am făcut câmpul opțional pentru a asigura compatibilitatea
+    playlist_version: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -82,28 +90,66 @@ class ScreenBase(BaseModel):
 class ScreenCreate(ScreenBase):
     pass
 
+class ScreenPair(BaseModel):
+    pairing_code: str
+    name: str
+    location: Optional[str] = None
+
 class ScreenPublic(ScreenBase):
     id: int
     unique_key: str
     last_seen: Optional[datetime] = None
-    # Afișăm și playlist-ul asignat, dacă există
     assigned_playlist: Optional[PlaylistPublic] = None
+    name: Optional[str] = None
+    is_active: bool
+    pairing_code: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 class PlaylistAssign(BaseModel):
-    playlist_id: int
+    playlist_id: Optional[int] = None
 
 class ClientPlaylistItem(BaseModel):
-    # URL-ul complet de unde clientul poate descărca fișierul
     url: str
-    type: str # ex: 'image/jpeg'
-    duration: int # în secunde
+    type: str
+    duration: int
 
 class ClientPlaylistResponse(BaseModel):
     name: str
     items: List[ClientPlaylistItem]
+    playlist_version: Optional[str] = None
+    screen_name: Optional[str] = None
 
 class ClientSyncRequest(BaseModel):
     unique_key: str
+
+class MediaIdList(BaseModel):
+    ids: List[int]
+
+class AdminUserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    is_admin: Optional[bool] = None
+    disk_quota_mb: Optional[int] = None
+
+DataType = TypeVar('DataType')
+
+class PaginatedResponse(GenericModel, Generic[DataType]):
+    total: int
+    items: List[DataType]
+
+class ScreenRegister(BaseModel):
+    unique_key: str
+    pairing_code: str
+
+class ScreenRePair(BaseModel):
+    new_pairing_code: str
+
+class ForgotPasswordSchema(BaseModel):
+    email: EmailStr
+
+class ResetPasswordSchema(BaseModel):
+    token: str
+    new_password: str

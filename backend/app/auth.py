@@ -48,14 +48,47 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        # Subiectul din token este adresa de email
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
-        token_data = schemas.TokenData(username=username)
+        token_data = schemas.TokenData(username=email) # Renumirea variabilei ar fi ideală, dar o lăsăm așa
     except JWTError:
         raise credentials_exception
-    
-    user = db.query(models.User).filter(models.User.username == token_data.username).first()
+
+    # --- AICI ESTE CORECȚIA CRITICĂ ---
+    # Căutăm utilizatorul după coloana 'email', nu 'username'
+    user = db.query(models.User).filter(models.User.email == token_data.username).first()
+
     if user is None:
         raise credentials_exception
     return user
+
+def create_verification_token(data: dict, expires_delta: timedelta = timedelta(hours=24)):
+    """Creează un token JWT special pentru verificarea email-ului, valabil 24 de ore."""
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode.update({"exp": expire, "scope": "email_verification"})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def create_password_reset_token(data: dict):
+    """Creează un token JWT special pentru resetarea parolei, valabil 15 minute."""
+    to_encode = data.copy()
+    # Setăm un timp de expirare scurt pentru securitate
+    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    to_encode.update({"exp": expire, "scope": "password_reset"})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_admin_user(current_user: models.User = Depends(get_current_user)):
+    """
+    O dependință care verifică dacă utilizatorul curent este administrator.
+    Dacă nu este, ridică o eroare 403 Forbidden.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform this action. Admin rights required."
+        )
+    return current_user
