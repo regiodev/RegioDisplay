@@ -13,7 +13,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
  
-    --primary: 222.2 47.4% 11.2%;
+    /* --- AICI ESTE MODIFICAREA --- */
+    /* Valoarea veche (negru/albastru închis) a fost: 222.2 47.4% 11.2% */
+    --primary: 207 84% 46%; /* Aceasta este noua valoare pentru #1181da */
     --primary-foreground: 210 40% 98%;
  
     --secondary: 210 40% 96.1%;
@@ -72,5 +74,52 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* --- NOU: Stiluri pentru tabele responsive --- */
+@layer components {
+  /* Pe ecrane mai mici de 768px (breakpoint-ul 'md' al Tailwind) */
+  @media (max-width: 767px) {
+    .responsive-table tr {
+        border-bottom: 1px solid theme('colors.slate.200');
+    }
+    .dark .responsive-table tr {
+        border-bottom: 1px solid theme('colors.slate.800');
+    }
+    
+    .responsive-table thead {
+      display: none;
+    }
+    
+    .responsive-table td {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid theme('colors.slate.100'); 
+    }
+
+    /* Regula corectată pentru border-bottom în dark mode */
+    .dark .responsive-table td {
+        border-bottom-color: theme('colors.slate.700');
+    }
+    
+    .responsive-table tr:last-child td:last-child {
+      border-bottom: 0;
+    }
+    
+    .responsive-table td::before {
+      content: attr(data-label);
+      font-weight: 600;
+      font-size: 0.875rem; /* 14px */
+      margin-right: 1rem;
+      color: theme('colors.slate.500');
+    }
+
+    /* Regula corectată pentru culoarea textului în dark mode */
+    .dark .responsive-table td::before {
+      color: theme('colors.slate.400');
+    }
   }
 }

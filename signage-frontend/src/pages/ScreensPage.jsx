@@ -1,141 +1,181 @@
 // Cale fișier: src/pages/ScreensPage.jsx
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import apiClient from '../api/axios';
 import PairScreenModal from '../components/PairScreenModal';
 import AssignPlaylistModal from '../components/AssignPlaylistModal';
 import RePairScreenModal from '../components/RePairScreenModal';
-import ScreenStatus from '../components/ScreenStatus'; // IMPORT NOU
+import ScreenStatus from '../components/ScreenStatus';
 import { Button } from "@/components/ui/button";
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { PlusCircle, MoreVertical, Trash2, Link, Edit, Repeat } from 'lucide-react';
 
 function ScreensPage() {
+  const { toast } = useToast();
   const [screens, setScreens] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
   const [isPairModalOpen, setIsPairModalOpen] = useState(false);
   const [screenToEdit, setScreenToEdit] = useState(null);
   const [screenToRePair, setScreenToRePair] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  const fetchScreens = async () => {
+  const fetchScreens = useCallback(async (showToast = false) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await apiClient.get('/screens');
-      setScreens(response.data.sort((a, b) => (b.is_active - a.is_active) || (new Date(b.last_seen) - new Date(a.last_seen))));
-      setError(null);
+      const response = await apiClient.get('/screens/');
+      setScreens(response.data);
+      if (showToast) {
+        toast({ title: "Succes", description: "Lista de ecrane a fost actualizată." });
+      }
     } catch (err) {
-      setError('Nu s-au putut încărca ecranele.');
-      console.error(err);
+      toast({ variant: "destructive", title: "Eroare", description: "Nu s-au putut încărca ecranele." });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     fetchScreens();
-  }, []);
-
-  const handleDeleteClick = (screenId, screenName) => {
-    setItemToDelete({ id: screenId, name: screenName });
-    setIsDeleteDialogOpen(true);
-  };
+    const interval = setInterval(() => fetchScreens(), 30000); // Reîmprospătare la 30 de secunde
+    return () => clearInterval(interval);
+  }, [fetchScreens]);
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
     try {
       await apiClient.delete(`/screens/${itemToDelete.id}`);
-      await fetchScreens();
-    } catch (err) {
-      alert('A apărut o eroare la ștergerea ecranului.');
-    } finally {
+      toast({ title: "Succes", description: `Ecranul "${itemToDelete.name}" a fost șters.` });
       setItemToDelete(null);
+      fetchScreens(true);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Eroare", description: "Ștergerea a eșuat." });
     }
   };
 
-  if (loading) return <p>Se încarcă ecranele...</p>;
-  if (error) return <p className="text-red-500">{error}</p>;
+  const processedScreens = useMemo(() => {
+    return screens
+      .filter(screen => {
+        const matchesSearch = screen.name.toLowerCase().includes(searchTerm.toLowerCase());
+        if (statusFilter === 'all') return matchesSearch;
+        const isOnline = statusFilter === 'online';
+        return matchesSearch && screen.is_online === isOnline;
+      });
+  }, [screens, searchTerm, statusFilter]);
 
   return (
-    <div>
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-slate-200">Management Ecrane</h1>
-        <Button onClick={() => setIsPairModalOpen(true)}>
-          Adaugă Ecran Nou
-        </Button>
+    <div className="p-4 md:p-8 space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <h1 className="text-3xl font-bold tracking-tight">Management Ecrane</h1>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setIsPairModalOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Adaugă Ecran Nou
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-6 bg-white dark:bg-slate-900 p-4 rounded-lg shadow overflow-x-auto">
+      <div className="flex flex-col md:flex-row gap-2">
+        <Input
+          type="search"
+          placeholder="Caută după nume..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full md:w-auto md:flex-1"
+        />
+        <div className="flex gap-2">
+          <Button variant={statusFilter === 'all' ? 'secondary' : 'outline'} onClick={() => setStatusFilter('all')} className="flex-1">Toate</Button>
+          <Button variant={statusFilter === 'online' ? 'secondary' : 'outline'} onClick={() => setStatusFilter('online')} className="flex-1">Online</Button>
+          <Button variant={statusFilter === 'offline' ? 'secondary' : 'outline'} onClick={() => setStatusFilter('offline')} className="flex-1">Offline</Button>
+        </div>
+      </div>
+      
+      {loading && <div className="text-center p-8">Se încarcă ecranele...</div>}
+
+      {/* VIZUALIZARE CARDURI PENTRU MOBIL */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:hidden">
+        {processedScreens.map(screen => (
+          <Card key={screen.id} className="flex flex-col justify-between">
+            <CardHeader>
+              <CardTitle className="flex justify-between items-start">
+                <span className="truncate pr-2">{screen.name}</span>
+                 <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setScreenToEdit(screen)}><Edit className="mr-2 h-4 w-4"/>Asignează Playlist</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setScreenToRePair(screen)}><Repeat className="mr-2 h-4 w-4"/>Re-împerechează</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setItemToDelete(screen)} className="text-red-500"><Trash2 className="mr-2 h-4 w-4"/>Șterge</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+                <p><strong className="font-medium">Playlist:</strong> {screen.assigned_playlist?.name || 'Niciunul'}</p>
+                <p><strong className="font-medium">Locație:</strong> {screen.location || 'Nespecificată'}</p>
+            </CardContent>
+            <CardFooter>
+                <ScreenStatus isOnline={screen.is_online} connectedSince={screen.connected_since} lastSeen={screen.last_seen} />
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+
+      {/* VIZUALIZARE TABEL PENTRU DESKTOP */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-800">
-          <thead className="bg-gray-50 dark:bg-slate-800">
+          <thead className="bg-gray-50 dark:bg-slate-900">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nume / Locație</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cod Împerechere</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Playlist Asignat</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acțiuni</th>
+              <th className="px-4 py-3 text-left">Nume Ecran</th>
+              <th className="px-4 py-3 text-left">Status</th>
+              <th className="px-4 py-3 text-left">Playlist Asignat</th>
+              <th className="px-4 py-3 text-left">Ultima Conectare</th>
+              <th className="px-4 py-3 text-right">Acțiuni</th>
             </tr>
           </thead>
-          <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-800">
-            {screens.map((screen) => (
-              <tr key={screen.id} className={!screen.is_active ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium">{screen.name || <span className="text-gray-400 italic">Așteaptă activare...</span>}</div>
-                    <div className="text-xs text-gray-500">{screen.location}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <ScreenStatus lastSeen={screen.last_seen} />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-blue-600 font-bold">
-                  {screen.pairing_code}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">{screen.assigned_playlist ? screen.assigned_playlist.name : 'Niciunul'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  {screen.is_active && (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => setScreenToEdit(screen)}>Asignează Playlist</Button>
-                      <Button variant="outline" size="sm" onClick={() => setScreenToRePair(screen)}>Re-împerechează</Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(screen.id, screen.name)}>Șterge</Button>
-                    </>
-                  )}
+          <tbody className="bg-white dark:bg-slate-950 divide-y divide-gray-200 dark:divide-slate-800">
+            {processedScreens.map(screen => (
+              <tr key={screen.id}>
+                <td className="px-4 py-3 font-medium">{screen.name}</td>
+                <td className="px-4 py-3"><ScreenStatus isOnline={screen.is_online} connectedSince={screen.connected_since} lastSeen={screen.last_seen} /></td>
+                <td className="px-4 py-3">{screen.assigned_playlist?.name || <span className="text-muted-foreground italic">Niciunul</span>}</td>
+                <td className="px-4 py-3">{new Date(screen.last_seen || screen.created_at).toLocaleString('ro-RO')}</td>
+                <td className="px-4 py-3 text-right space-x-2">
+                  <Button variant="outline" size="sm" onClick={() => setScreenToEdit(screen)}>Asignează</Button>
+                  <Button variant="outline" size="sm" onClick={() => setScreenToRePair(screen)}>Re-împerechează</Button>
+                  <Button variant="destructive" size="sm" onClick={() => setItemToDelete(screen)}>Șterge</Button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      
+      {(processedScreens.length === 0 && !loading) && (<div className="text-center py-8 text-gray-500">Niciun ecran nu corespunde criteriilor.</div>)}
 
-      <PairScreenModal isOpen={isPairModalOpen} onClose={() => setIsPairModalOpen(false)} onSave={fetchScreens} />
-
-      {screenToEdit && (
-        <AssignPlaylistModal screen={screenToEdit} isOpen={!!screenToEdit} onClose={() => setScreenToEdit(null)} onSave={fetchScreens} />
-      )}
-
-      {screenToRePair && (
-        <RePairScreenModal screen={screenToRePair} isOpen={!!screenToRePair} onClose={() => setScreenToRePair(null)} onSave={fetchScreens} />
-      )}
-
+      <PairScreenModal isOpen={isPairModalOpen} onClose={() => setIsPairModalOpen(false)} onSave={() => fetchScreens(true)} />
+      {screenToEdit && <AssignPlaylistModal screen={screenToEdit} isOpen={!!screenToEdit} onClose={() => setScreenToEdit(null)} onSave={() => fetchScreens(true)} />}
+      {screenToRePair && <RePairScreenModal screen={screenToRePair} isOpen={!!screenToRePair} onClose={() => setScreenToRePair(null)} onSave={() => fetchScreens(true)} />}
       <AlertDialog open={!!itemToDelete} onOpenChange={() => setItemToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Ești absolut sigur?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Această acțiune nu poate fi anulată. Ecranul
-              <strong className="px-1">{itemToDelete?.name}</strong>
-              va fi șters permanent din sistem.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Ecranul <strong className="px-1">{itemToDelete?.name}</strong> va fi șters permanent.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setItemToDelete(null)}>Anulează</AlertDialogCancel>
+            <AlertDialogCancel>Anulează</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete}>Da, șterge</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

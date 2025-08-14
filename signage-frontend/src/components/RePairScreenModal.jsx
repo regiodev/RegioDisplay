@@ -49,16 +49,17 @@ function RePairScreenModal({ screen, isOpen, onClose, onSave }) {
             Porniți noul player TV și introduceți codul de 4 caractere afișat pe ecran. Setările curente vor fi transferate noului dispozitiv.
           </DialogDescription>
         </DialogHeader>
+        {/* --- MODIFICARE: Grid-ul este acum responsiv --- */}
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="pairing-code" className="text-right">
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+            <Label htmlFor="pairing-code" className="sm:text-right">
               Cod TV Nou
             </Label>
             <Input
               id="pairing-code"
               value={pairingCode}
               onChange={(e) => setPairingCode(e.target.value)}
-              className="col-span-3"
+              className="sm:col-span-3"
               placeholder="Ex: B7X2"
             />
           </div>

@@ -10,7 +10,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        {/* --- AICI ESTE MODIFICAREA: am schimbat defaultTheme în "light" --- */}
+        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
           <App />
         </ThemeProvider>
       </AuthProvider>

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Pagination from '@/components/Pagination';
+import { X } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -34,16 +35,16 @@ function CreatePlaylistModal({ isOpen, onClose, onSave }) {
     }
   }, [toast]);
 
-  // Acest useEffect gestionează atât deschiderea/închiderea, cât și schimbarea paginii
   useEffect(() => {
     if (isOpen) {
       fetchMedia(currentPage);
     } else {
-      // Resetează starea când modalul este închis
-      setPlaylistName('');
-      setPlaylistItems([]);
-      setCurrentPage(1);
-      setTotalItems(0);
+      setTimeout(() => {
+        setPlaylistName('');
+        setPlaylistItems([]);
+        setCurrentPage(1);
+        setTotalItems(0);
+      }, 200);
     }
   }, [isOpen, currentPage, fetchMedia]);
 
@@ -95,53 +96,75 @@ function CreatePlaylistModal({ isOpen, onClose, onSave }) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl w-full h-full md:h-auto md:max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="p-4 md:p-6 border-b">
           <DialogTitle>Creează Playlist Nou</DialogTitle>
           <DialogDescription>Adaugă un nume și selectează fișierele media din galeria de mai jos.</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-4 py-4 flex-grow min-h-0">
-          <div>
-            <Label htmlFor="playlistName" className="mb-2">Nume Playlist</Label>
-            <Input id="playlistName" value={playlistName} onChange={(e) => setPlaylistName(e.target.value)} placeholder="Ex: Reclame Iulie" />
-          </div>
-          <div className="grid grid-cols-2 gap-6 flex-grow min-h-0">
-            <div className="flex flex-col">
-              <h3 className="text-sm font-medium mb-2">Fișiere Media Disponibile</h3>
-              <div className="border p-2 rounded-md flex-grow flex flex-col justify-between">
-                <div className="grid grid-cols-3 gap-2 overflow-y-auto">
-                  {loading ? <p className="col-span-3 text-center">Se încarcă...</p> : availableMedia.map(file => {
-                    const imageUrl = file.thumbnail_path ? `https://display.regio-cloud.ro${file.thumbnail_path}` : `https://display.regio-cloud.ro/media/serve/${file.id}`;
-                    return (
-                      <div key={file.id} onClick={() => handleAddItem(file)} className="border rounded-lg p-1 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800">
-                        <img src={imageUrl} alt={file.filename} className="w-full h-16 object-cover bg-gray-200" />
-                        <p className="text-xs truncate mt-1">{file.filename}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-                <Pagination currentPage={currentPage} totalItems={totalItems} itemsPerPage={ITEMS_PER_PAGE} onPageChange={handlePageChange} />
-              </div>
+
+        {/* --- MODIFICARE CHEIE: Acesta este acum containerul principal pentru scroll --- */}
+        <div className="flex-grow min-h-0 overflow-y-auto p-4 md:p-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <Label htmlFor="playlistName" className="mb-2">Nume Playlist</Label>
+              <Input id="playlistName" value={playlistName} onChange={(e) => setPlaylistName(e.target.value)} placeholder="Ex: Reclame Iulie" />
             </div>
-            <div className="flex flex-col">
-              <h3 className="text-sm font-medium mb-2">Elemente în Playlist</h3>
-              <div className="mt-2 space-y-2 overflow-y-auto border p-2 rounded-md flex-grow">
-                {playlistItems.length === 0 ? <p className="text-slate-500 text-sm p-4 text-center">Niciun element adăugat.</p> :
-                  playlistItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2 rounded">
-                      <img src={item.thumbnail_path ? `https://display.regio-cloud.ro${item.thumbnail_path}` : `https://display.regio-cloud.ro/media/serve/${item.id}`} className="w-12 h-12 object-cover rounded bg-gray-200" />
-                      <span className="text-sm truncate mx-2 flex-1">{item.filename}</span>
-                      <Input type="number" value={item.duration} onChange={(e) => handleDurationChange(item.id, e.target.value)} className="w-20 h-8" />
-                      <span className="text-sm ml-1">sec</span>
-                      <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)} className="ml-2 text-red-500 hover:text-red-700 w-6 h-6"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></Button>
-                    </div>
-                  ))
-                }
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Coloana 1: Fișiere Disponibile */}
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-medium">Fișiere Media Disponibile</h3>
+                <div className="border p-2 rounded-md">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {loading ? <p className="col-span-full text-center">Se încarcă...</p> : availableMedia.map(file => {
+                      const imageUrl = file.thumbnail_path 
+                        ? `https://display.regio-cloud.ro/api/media/thumbnails/${file.thumbnail_path}` 
+                        : `https://display.regio-cloud.ro/api/media/serve/${file.id}`;
+                      return (
+                        <div key={file.id} onClick={() => handleAddItem(file)} className="border rounded-lg p-1 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800">
+                          <img src={imageUrl} alt={file.filename} className="w-full h-16 object-cover bg-gray-200" />
+                          <p className="text-xs truncate mt-1">{file.filename}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <Pagination currentPage={currentPage} totalItems={totalItems} itemsPerPage={ITEMS_PER_PAGE} onPageChange={handlePageChange} />
+                </div>
+              </div>
+
+              {/* Coloana 2: Elemente în Playlist */}
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-medium">Elemente în Playlist</h3>
+                <div className="space-y-2 border p-2 rounded-md min-h-[150px]">
+                  {playlistItems.length === 0 ? <p className="text-slate-500 text-sm p-4 text-center">Niciun element adăugat.</p> :
+                    playlistItems.map(item => {
+                      const itemImageUrl = item.thumbnail_path 
+                        ? `https://display.regio-cloud.ro/api/media/thumbnails/${item.thumbnail_path}` 
+                        : `https://display.regio-cloud.ro/api/media/serve/${item.id}`;
+                      return (
+                        <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                             <img src={itemImageUrl} alt={item.filename} className="w-12 h-12 object-cover rounded bg-gray-200 flex-shrink-0" />
+                             <span className="text-sm truncate flex-1">{item.filename}</span>
+                          </div>
+                          <div className="flex items-center gap-2 self-end sm:self-center">
+                            <Input type="number" value={item.duration} onChange={(e) => handleDurationChange(item.id, e.target.value)} className="w-20 h-8" />
+                            <span className="text-sm ml-1">sec</span>
+                            <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-700 w-6 h-6">
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  }
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <DialogFooter>
+
+        <DialogFooter className="p-4 md:p-6 border-t mt-auto">
           <Button variant="outline" onClick={onClose}>Anulează</Button>
           <Button onClick={handleSave}>Salvează Playlist</Button>
         </DialogFooter>

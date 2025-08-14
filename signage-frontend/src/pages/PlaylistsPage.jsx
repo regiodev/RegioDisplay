@@ -1,143 +1,180 @@
-import { useState, useEffect } from 'react';
+// Cale fișier: src/pages/PlaylistsPage.jsx
+
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import apiClient from '../api/axios';
-import CreatePlaylistModal from '../components/CreatePlaylistModal';
-import { Link } from 'react-router-dom';
+import PlaylistPreviewModal from '../components/PlaylistPreviewModal';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { PlusCircle, MoreVertical, Trash2, Edit, Eye, ListMusic, Clock } from 'lucide-react';
+
+function formatDuration(items) {
+  const totalSeconds = items.reduce((acc, item) => acc + item.duration, 0);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
 
 function PlaylistsPage() {
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const [playlists, setPlaylists] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const [playlistToPreview, setPlaylistToPreview] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); // Default este acum 'list'
 
-  const fetchPlaylists = async () => {
+  const fetchPlaylists = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const response = await apiClient.get('/playlists/');
       setPlaylists(response.data);
-      setError(null);
     } catch (err) {
-      setError('Nu s-au putut încărca playlist-urile.');
-      console.error(err);
+      toast({ variant: "destructive", title: "Eroare", description: "Nu s-au putut încărca playlist-urile." });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     fetchPlaylists();
-  }, []);
-
-  const handleDeleteClick = (e, playlistId, playlistName) => {
-    e.preventDefault(); 
-    e.stopPropagation();
-    setItemToDelete({ id: playlistId, name: playlistName });
-    setIsDeleteDialogOpen(true);
-  };
+  }, [fetchPlaylists]);
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
     try {
       await apiClient.delete(`/playlists/${itemToDelete.id}`);
-      await fetchPlaylists();
-    } catch (err) {
-      alert('A apărut o eroare la ștergerea playlist-ului.');
-      console.error(err);
-    } finally {
-      setIsDeleteDialogOpen(false);
+      toast({ title: "Succes", description: `Playlist-ul "${itemToDelete.name}" a fost șters.` });
+      setItemToDelete(null);
+      fetchPlaylists();
+    } catch (error) {
+      const errorMessage = error.response?.data?.detail || "Ștergerea a eșuat.";
+      toast({ variant: "destructive", title: "Eroare la ștergere", description: errorMessage });
       setItemToDelete(null);
     }
   };
 
-  if (loading) return <p>Se încarcă playlist-urile...</p>;
-  if (error) return <p className="text-red-500">{error}</p>;
-
+  const filteredPlaylists = useMemo(() => {
+    return playlists.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [playlists, searchTerm]);
+  
   return (
-    <div>
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-slate-200">Management Playlist-uri</h1>
-        <div className="flex items-center space-x-4">
-          <Button onClick={() => setIsModalOpen(true)}>
-            Creează Playlist Nou
+    <div className="p-4 md:p-8 space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <h1 className="text-3xl font-bold tracking-tight">Management Playlist-uri</h1>
+        <div className="flex items-center gap-2">
+           <Input
+              type="search"
+              placeholder="Caută după nume..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full md:w-64"
+            />
+          <Button asChild>
+            {/* Navigarea aici este corecta, catre /playlists/new */}
+            <Link to="/playlists/new">
+                <PlusCircle className="mr-2 h-4 w-4" /> Creează Playlist
+            </Link>
           </Button>
-          <div className="flex items-center space-x-2 p-1 bg-gray-200 dark:bg-slate-800 rounded-lg">
-            <button onClick={() => setViewMode('grid')} className={`px-3 py-1 text-sm rounded-md ${viewMode === 'grid' ? 'bg-white dark:bg-slate-950 shadow' : 'hover:bg-gray-300 dark:hover:bg-slate-700'}`}>Grilă</button>
-            <button onClick={() => setViewMode('list')} className={`px-3 py-1 text-sm rounded-md ${viewMode === 'list' ? 'bg-white dark:bg-slate-950 shadow' : 'hover:bg-gray-300 dark:hover:bg-slate-700'}`}>Listă</button>
-          </div>
         </div>
       </div>
-
-      <div className="mt-6">
-        {playlists.length === 0 && !loading ? (
-          <p className="col-span-full text-center text-gray-500">Nu există playlist-uri create.</p>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {playlists.map((playlist) => (
-              <Link to={`/playlists/${playlist.id}`} key={playlist.id} className="relative block bg-white dark:bg-slate-900 p-4 rounded-lg shadow hover:shadow-lg transition-shadow group">
-                <h2 className="text-xl font-bold truncate text-slate-800 dark:text-slate-200">{playlist.name}</h2>
-                <p className="text-gray-600 dark:text-slate-400 mt-2">{playlist.items.length} elemente</p>
-                <Button variant="destructive" size="icon" onClick={(e) => handleDeleteClick(e, playlist.id, playlist.name)} className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" title="Șterge playlist">X</Button>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-white dark:bg-slate-900 shadow rounded-lg overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-800">
-              <thead className="bg-gray-50 dark:bg-slate-800">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Nume Playlist</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Număr Elemente</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Acțiuni</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-800">
-                {playlists.map((playlist) => (
-                  <tr key={playlist.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-slate-200">{playlist.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-slate-400">{playlist.items.length}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
-                      <Button asChild variant="outline" size="sm"><Link to={`/playlists/${playlist.id}`}>Editează</Link></Button>
-                      <Button variant="destructive" size="sm" onClick={(e) => handleDeleteClick(e, playlist.id, playlist.name)}>Șterge</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
       
-      {/* AICI ESTE CORECȚIA PRINCIPALĂ */}
-      <CreatePlaylistModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSave={fetchPlaylists} 
-      />
+      {loading && <div className="text-center p-8">Se încarcă playlist-urile...</div>}
 
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+       {/* VIZUALIZARE CARDURI PENTRU MOBIL */}
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:hidden">
+         {filteredPlaylists.map(playlist => (
+          <Card key={playlist.id} className="flex flex-col justify-between">
+            <CardHeader>
+               <CardTitle className="flex justify-between items-start">
+                <span className="truncate pr-2">{playlist.name}</span>
+                 <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"><MoreVertical className="h-4 w-4" /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setPlaylistToPreview(playlist)}><Eye className="mr-2 h-4 w-4"/>Previzualizează</DropdownMenuItem>
+                    {/* --- MODIFICAREA 1 --- */}
+                    <DropdownMenuItem onClick={() => navigate(`/playlists/${playlist.id}`)}><Edit className="mr-2 h-4 w-4"/>Editează</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setItemToDelete(playlist)} className="text-red-500"><Trash2 className="mr-2 h-4 w-4"/>Șterge</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-grow space-y-2 text-sm text-muted-foreground">
+                <div className="flex items-center">
+                    <ListMusic className="h-4 w-4 mr-2" />
+                    <span>{playlist.items.length} piese</span>
+                </div>
+                <div className="flex items-center">
+                    <Clock className="h-4 w-4 mr-2" />
+                    <span>Durată: {formatDuration(playlist.items)}</span>
+                </div>
+            </CardContent>
+             <CardFooter>
+                 {/* --- MODIFICAREA 2 --- */}
+                 <Button className="w-full" onClick={() => navigate(`/playlists/${playlist.id}`)}>Vezi detalii & Editează</Button>
+            </CardFooter>
+          </Card>
+         ))}
+       </div>
+
+      {/* VIZUALIZARE TABEL PENTRU DESKTOP */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-800">
+          <thead className="bg-gray-50 dark:bg-slate-900">
+            <tr>
+              <th className="px-4 py-3 text-left">Nume Playlist</th>
+              <th className="px-4 py-3 text-left">Număr Piese</th>
+              <th className="px-4 py-3 text-left">Durată Totală</th>
+              <th className="px-4 py-3 text-left">Creat La</th>
+              <th className="px-4 py-3 text-right">Acțiuni</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white dark:bg-slate-950 divide-y divide-gray-200 dark:divide-slate-800">
+            {filteredPlaylists.map(playlist => (
+              <tr key={playlist.id}>
+                <td className="px-4 py-3 font-medium">{playlist.name}</td>
+                <td className="px-4 py-3">{playlist.items.length}</td>
+                <td className="px-4 py-3">{formatDuration(playlist.items)}</td>
+                <td className="px-4 py-3">{new Date(playlist.created_at).toLocaleDateString('ro-RO')}</td>
+                <td className="px-4 py-3 text-right space-x-2">
+                  <Button variant="outline" size="sm" onClick={() => setPlaylistToPreview(playlist)}>Previzualizează</Button>
+                  {/* --- MODIFICAREA 3 --- */}
+                  <Button variant="outline" size="sm" onClick={() => navigate(`/playlists/${playlist.id}`)}>Editează</Button>
+                  <Button variant="destructive" size="sm" onClick={() => setItemToDelete(playlist)}>Șterge</Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {(filteredPlaylists.length === 0 && !loading) && (<div className="text-center py-8 text-gray-500">Niciun playlist nu corespunde criteriilor.</div>)}
+      
+      {playlistToPreview && <PlaylistPreviewModal playlist={playlistToPreview} isOpen={!!playlistToPreview} onClose={() => setPlaylistToPreview(null)} />}
+      
+      <AlertDialog open={!!itemToDelete} onOpenChange={() => setItemToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Ești absolut sigur?</AlertDialogTitle>
             <AlertDialogDescription>
-              Această acțiune nu poate fi anulată. Playlist-ul "{itemToDelete?.name}" va fi șters permanent.
+              Playlist-ul <strong className="px-1">{itemToDelete?.name}</strong> va fi șters permanent. Această acțiune nu poate fi anulată.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setItemToDelete(null)}>Anulează</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Da, șterge playlist-ul</AlertDialogAction>
+            <AlertDialogCancel>Anulează</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Da, șterge</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -1,62 +1,78 @@
 // Cale fișier: src/components/ScreenStatus.jsx
 
-import React from 'react';
-import { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-// O funcție ajutătoare pentru a formata timpul relativ
-function formatTimeAgo(date) {
-  const seconds = Math.floor((new Date() - date) / 1000);
-  let interval = seconds / 31536000;
-  if (interval > 1) return Math.floor(interval) + " ani în urmă";
-  interval = seconds / 2592000;
-  if (interval > 1) return Math.floor(interval) + " luni în urmă";
-  interval = seconds / 86400;
-  if (interval > 1) return Math.floor(interval) + " zile în urmă";
-  interval = seconds / 3600;
-  if (interval > 1) return Math.floor(interval) + " ore în urmă";
-  interval = seconds / 60;
-  if (interval > 1) return Math.floor(interval) + " minute în urmă";
-  return "câteva secunde în urmă";
-}
+function ScreenStatus({ lastSeen, isOnline, connectedSince }) {
+  
+  // Stare internă pentru a stoca textul dinamic. Inițializăm cu un text generic.
+  const [dynamicText, setDynamicText] = useState('');
 
-// Componenta principală pentru status
-function ScreenStatus({ lastSeen }) {
-  const [now, setNow] = useState(new Date());
-
-  // Re-randăm componenta în fiecare minut pentru a actualiza timpul de uptime
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
+    // Dacă statusul este Online, pornim un cronometru care actualizează textul.
+    if (isOnline && connectedSince) {
+      
+      const formatOnlineDuration = () => {
+        const startDate = new Date(connectedSince);
+        const now = new Date();
+        const diffSeconds = Math.floor((now - startDate) / 1000);
+        const diffMinutes = Math.floor(diffSeconds / 60);
 
-  if (!lastSeen) {
-    return <span className="text-gray-400 italic">Niciodată văzut</span>;
-  }
+        if (diffMinutes < 1) {
+          return "Online de câteva secunde";
+        }
+        if (diffMinutes === 1) {
+          return "Online de un minut";
+        }
+        // Regulă gramaticală: folosim "de" pentru numerele >= 20 sau 
+        // pentru cele care nu se termină în 1 (cu excepția lui 11).
+        // Pentru simplitate și consistență, folosim "de" pentru toate numerele > 1.
+        return `Online de ${diffMinutes} minute`;
+      };
 
-  const lastSeenDate = new Date(lastSeen);
-  const diffMinutes = (now - lastSeenDate) / 1000 / 60;
+      // Actualizăm textul imediat la afișare
+      setDynamicText(formatOnlineDuration());
 
-  const isOnline = diffMinutes < 20; // Prag de 20 de minute pentru statusul "Online"
+      // Pornim un timer care va actualiza textul la fiecare 30 de secunde
+      const intervalId = setInterval(() => {
+        setDynamicText(formatOnlineDuration());
+      }, 30000); // 30000 ms = 30 secunde
 
-  const formattedLastSeen = lastSeenDate.toLocaleString('ro-RO', {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
+      // Funcția de curățare: oprim cronometrul când componenta nu mai este afișată
+      return () => clearInterval(intervalId);
+    }
+  }, [isOnline, connectedSince]); // Acest efect se va reporni dacă se schimbă starea sau conexiunea
 
-  return (
-    <div className="flex flex-col">
-      {isOnline ? (
+
+  if (isOnline) {
+    return (
+      <div className="flex flex-col">
         <div className="flex items-center">
           <span className="h-3 w-3 rounded-full bg-green-500 mr-2"></span>
           <span className="font-semibold text-green-600">Online</span>
         </div>
-      ) : (
-        <div className="flex items-center">
-          <span className="h-3 w-3 rounded-full bg-gray-400 mr-2"></span>
-          <span className="font-semibold text-gray-500">Offline</span>
-        </div>
-      )}
+        <span className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+          {/* Afișăm textul din starea dinamică a componentei */}
+          {dynamicText}
+        </span>
+      </div>
+    );
+  }
+
+  // Cazul 'Offline' (rămâne neschimbat)
+  const formattedLastSeen = lastSeen 
+    ? new Date(lastSeen).toLocaleString('ro-RO', {
+        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      })
+    : 'Niciodată';
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center">
+        <span className="h-3 w-3 rounded-full bg-red-500 mr-2"></span>
+        <span className="font-semibold text-red-600">Offline</span>
+      </div>
       <span className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-        {isOnline ? `Văzut ${formatTimeAgo(lastSeenDate)}` : `Ultima dată: ${formattedLastSeen}`}
+        Ultima dată online: {formattedLastSeen}
       </span>
     </div>
   );
