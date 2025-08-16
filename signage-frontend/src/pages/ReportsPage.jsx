@@ -23,6 +23,19 @@ const COLORS = ['#1181da', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 // Funcție ajutătoare pentru a formata o dată în format YYYY-MM-DD
 const formatDateForInput = (date) => date.toISOString().split('T')[0];
 
+// Funcție pentru a formata data și ora în format YYYY.MM.DD HH:mm:ss
+const formatDateTime = (isoString) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}.${month}.${day} ${hours}:${minutes}:${seconds}`;
+};
+
 function ReportsPage() {
     const { toast } = useToast();
     
@@ -160,9 +173,9 @@ function ReportsPage() {
                         <CardHeader><CardTitle>Timeline Redări ({reportData.timeline.length} evenimente)</CardTitle></CardHeader>
                         <CardContent className="overflow-x-auto">
                             <table className="min-w-full text-sm responsive-table">
-                                <thead className="bg-muted"><tr><th className="p-2 text-left">Ora</th><th className="p-2 text-left">Fișier Media</th><th className="p-2 text-left">Ecran</th><th className="p-2 text-left">Durată</th></tr></thead>
+                                <thead className="bg-muted"><tr><th className="p-2 text-left">Timestamp</th><th className="p-2 text-left">Fișier Media</th><th className="p-2 text-left">Ecran</th><th className="p-2 text-left">Durată</th></tr></thead>
                                 <tbody>{reportData.timeline.map((item, index) => (
-                                    <tr key={index} className="border-b"><td data-label="Ora" className="p-2">{new Date(item.played_at).toLocaleTimeString('ro-RO')}</td><td data-label="Fișier" className="p-2">{item.media_filename}</td><td data-label="Ecran" className="p-2">{item.screen_name}</td><td data-label="Durată" className="p-2">{item.duration_seconds}s</td></tr>
+                                    <tr key={index} className="border-b"><td data-label="Timestamp" className="p-2">{formatDateTime(item.played_at)}</td><td data-label="Fișier" className="p-2">{item.media_filename}</td><td data-label="Ecran" className="p-2">{item.screen_name}</td><td data-label="Durată" className="p-2">{item.duration_seconds}s</td></tr>
                                 ))}</tbody>
                             </table>
                             {reportData.timeline.length === 0 && <p className="text-center text-muted-foreground py-4">Niciun eveniment de afișat în timeline pentru perioada selectată.</p>}

@@ -203,7 +203,7 @@ function ScreensPage() {
       </div>
 
       <div className="hidden md:block overflow-x-auto rounded-lg border">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-800">
+        <table className="min-w-full text-sm divide-y divide-gray-200 dark:divide-gray-700 responsive-table">
           <thead className="bg-gray-50 dark:bg-slate-900">
             <tr>
               <th className="px-4 py-3 text-left">Nume Ecran</th>

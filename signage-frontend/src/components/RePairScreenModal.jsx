@@ -58,7 +58,8 @@ function RePairScreenModal({ screen, isOpen, onClose, onSave }) {
             <Input
               id="pairing-code"
               value={pairingCode}
-              onChange={(e) => setPairingCode(e.target.value)}
+              onChange={(e) => setPairingCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
               className="sm:col-span-3"
               placeholder="Ex: B7X2"
             />
