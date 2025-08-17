@@ -107,6 +107,75 @@ async def set_screen_rotation(
     return db_screen
 # --- FINAL ENDPOINT NOU ---
 
+@router.get("/{screen_id}", response_model=schemas.ScreenPublic)
+def get_screen(
+    screen_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    db_screen = db.query(models.Screen).filter(
+        models.Screen.id == screen_id,
+        models.Screen.created_by_id == current_user.id
+    ).first()
+
+    if not db_screen:
+        raise HTTPException(status_code=404, detail="Screen not found")
+
+    if db_screen.unique_key in manager.active_connections:
+        db_screen.is_online = True
+        _, start_time = manager.active_connections[db_screen.unique_key]
+        db_screen.connected_since = start_time
+
+    return db_screen
+
+
+@router.put("/{screen_id}", response_model=schemas.ScreenPublic)
+async def update_screen(
+    screen_id: int,
+    screen_update: schemas.ScreenUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    db_screen = db.query(models.Screen).filter(
+        models.Screen.id == screen_id,
+        models.Screen.created_by_id == current_user.id
+    ).first()
+
+    if not db_screen:
+        raise HTTPException(status_code=404, detail="Screen not found")
+
+    update_data = screen_update.dict(exclude_unset=True)
+    
+    if 'rotation' in update_data and update_data['rotation'] not in [0, 90, 180, 270]:
+        raise HTTPException(status_code=400, detail="Invalid rotation value.")
+
+    # Handle manual playlist assignment
+    if "assigned_playlist_id" in update_data:
+        if update_data["assigned_playlist_id"] is None:
+            db_screen.assigned_playlist_id = None
+        else:
+            playlist_id = update_data["assigned_playlist_id"]
+            db_playlist = db.query(models.Playlist).filter(
+                models.Playlist.id == playlist_id,
+                models.Playlist.created_by_id == current_user.id
+            ).first()
+            if not db_playlist:
+                raise HTTPException(status_code=404, detail=f"Playlist with id {playlist_id} not found.")
+            db_screen.assigned_playlist_id = playlist_id
+        # Remove from update_data to avoid setting it again
+        del update_data["assigned_playlist_id"]
+
+    for key, value in update_data.items():
+        setattr(db_screen, key, value)
+
+    db.commit()
+    db.refresh(db_screen)
+
+    await manager.send_to_screen("playlist_updated", db_screen.unique_key)
+
+    return db_screen
+
+
 @router.get("/", response_model=List[schemas.ScreenPublic])
 def get_screens(
     skip: int = 0, 

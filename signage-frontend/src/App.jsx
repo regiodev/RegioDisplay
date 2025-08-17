@@ -14,6 +14,7 @@ const MainLayout = lazy(() => import('./components/MainLayout'));
 const MediaPage = lazy(() => import('./pages/MediaPage'));
 const PlaylistsPage = lazy(() => import('./pages/PlaylistsPage'));
 const ScreensPage = lazy(() => import('./pages/ScreensPage'));
+const EditScreenPage = lazy(() => import('./pages/EditScreenPage'));
 const EditPlaylistPage = lazy(() => import('./pages/EditPlaylistPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
@@ -51,6 +52,7 @@ function App() {
           <Route path="playlists" element={<PlaylistsPage />} />
           <Route path="playlists/:playlistId" element={<EditPlaylistPage />} />
           <Route path="screens" element={<ScreensPage />} />
+          <Route path="screens/:id" element={<EditScreenPage />} />
           <Route path="reports" element={<ReportsPage />} />
 
           <Route element={<AdminRoute />}>

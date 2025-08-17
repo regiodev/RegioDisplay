@@ -205,6 +205,18 @@ function MediaPage() {
   );
   const isOverQuota = totalStagedSizeBytes > availableSpaceBytes;
 
+  const handleSort = useCallback((columnKey) => {
+    setSortConfig((prevConfig) => {
+      if (prevConfig.key === columnKey) {
+        return {
+          ...prevConfig,
+          direction: prevConfig.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return { key: columnKey, direction: 'asc' };
+    });
+  }, []);
+
   const fetchMediaFiles = useCallback(async () => {
     setLoading(true);
     try {
@@ -243,7 +255,7 @@ function MediaPage() {
     if (isAnyFileProcessing) {
       const timer = setTimeout(() => {
         fetchMediaFiles();
-      }, 5000); // Verifică din nou peste 5 secunde
+      }, 20000); // Verifică din nou peste 20 secunde
 
       return () => clearTimeout(timer);
     }
@@ -516,7 +528,7 @@ function MediaPage() {
                     </div>
                   </CardContent>
                   <CardFooter className="p-3 flex flex-col items-start text-sm">
-                    <p className="font-semibold truncate w-full">{file.filename}</p>
+                    <p className="truncate w-full">{file.filename}</p>
                     <p className="text-muted-foreground">{formatBytes(file.size)}</p>
                   </CardFooter>
                 </Card>
@@ -560,7 +572,7 @@ function MediaPage() {
                           onCheckedChange={() => handleSelectFile(file.id)}
                         />
                       </td>
-                      <td data-label="Nume" className="font-medium">
+                      <td data-label="Nume">
                         {file.filename}
                       </td>
                       <td data-label="Tip">{file.type}</td>
