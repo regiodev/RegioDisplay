@@ -51,7 +51,6 @@ async def create_playlist(
     db.commit()
     db.refresh(db_playlist)
     
-    # Trimitem notificarea folosind noua metodă sigură
     db_session_for_ws = SessionLocal()
     try:
         await manager.broadcast_to_user_screens("playlist_updated", current_user.id, db_session_for_ws)
@@ -87,6 +86,7 @@ def get_playlist(
         raise HTTPException(status_code=404, detail="Playlist not found")
     return db_playlist
 
+# --- AICI ESTE FUNCȚIA MODIFICATĂ ---
 @router.delete("/{playlist_id}", status_code=204)
 async def delete_playlist(
     playlist_id: int,
@@ -101,14 +101,24 @@ async def delete_playlist(
     if db_playlist is None:
         raise HTTPException(status_code=404, detail="Playlist not found")
 
-    screens_using_playlist = db.query(models.Screen).filter(models.Screen.assigned_playlist_id == playlist_id).all()
-    for screen in screens_using_playlist:
-        screen.assigned_playlist_id = None
+    # --- BLOC NOU: Verificăm dacă playlist-ul este asignat vreunui ecran ---
+    screens_using_playlist = db.query(models.Screen).filter(
+        models.Screen.assigned_playlist_id == playlist_id
+    ).all()
 
+    if screens_using_playlist:
+        screen_names = [screen.name for screen in screens_using_playlist]
+        raise HTTPException(
+            status_code=409, # Codul 409 'Conflict' este potrivit aici
+            detail=f"Cannot delete playlist. It is currently assigned to the following screen(s): {', '.join(screen_names)}."
+        )
+    # --- FINAL BLOC NOU ---
+
+    # Logica de dezasignare automată a fost eliminată.
+    # Ștergerea are loc doar dacă verificarea de mai sus trece.
     db.delete(db_playlist)
     db.commit()
     
-    # Trimitem notificarea folosind noua metodă sigură
     db_session_for_ws = SessionLocal()
     try:
         await manager.broadcast_to_user_screens("playlist_updated", current_user.id, db_session_for_ws)
@@ -157,7 +167,6 @@ async def update_playlist(
     db.commit()
     db.refresh(db_playlist)
     
-    # Trimitem notificarea folosind noua metodă sigură
     db_session_for_ws = SessionLocal()
     try:
         await manager.broadcast_to_user_screens("playlist_updated", current_user.id, db_session_for_ws)

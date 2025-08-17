@@ -2,9 +2,9 @@
 
 import asyncio
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone # Am adăugat timezone
 
 from .. import models, schemas, auth
 from ..database import get_db, SessionLocal
@@ -22,7 +22,7 @@ async def pair_screen(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     screen_to_pair = db.query(models.Screen).filter(
-        models.Screen.pairing_code == payload.pairing_code
+        models.Screen.pairing_code == payload.pairing_code.upper()
     ).first()
 
     if not screen_to_pair:
@@ -41,7 +41,6 @@ async def pair_screen(
     db.commit()
     db.refresh(screen_to_pair)
     
-    # Trimitem notificarea direct către ecranul proaspăt activat
     await manager.send_to_screen("playlist_updated", screen_to_pair.unique_key)
     
     return screen_to_pair
@@ -75,13 +74,38 @@ async def assign_playlist_to_screen(
     db.commit()
     db.refresh(db_screen)
 
-    # Trimitem notificarea direct către ecranul afectat
     await manager.send_to_screen("playlist_updated", db_screen.unique_key)
     
     return db_screen
 
-# Restul funcțiilor din acest fișier (get_screens, re_pair_screen, delete_screen)
-# rămân la fel ca în versiunile anterioare, dar pentru a fi siguri, iată fișierul complet:
+# --- ENDPOINT NOU ADĂUGAT ---
+@router.put("/{screen_id}/rotation", response_model=schemas.ScreenPublic)
+async def set_screen_rotation(
+    screen_id: int,
+    payload: schemas.ScreenRotationUpdateWeb,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    db_screen = db.query(models.Screen).filter(
+        models.Screen.id == screen_id,
+        models.Screen.created_by_id == current_user.id
+    ).first()
+    
+    if not db_screen:
+        raise HTTPException(status_code=404, detail="Screen not found")
+
+    if payload.rotation not in [0, 90, 180, 270]:
+        raise HTTPException(status_code=400, detail="Invalid rotation value. Must be 0, 90, 180, or 270.")
+
+    db_screen.rotation = payload.rotation
+    db_screen.rotation_updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(db_screen)
+
+    await manager.send_to_screen("playlist_updated", db_screen.unique_key)
+    
+    return db_screen
+# --- FINAL ENDPOINT NOU ---
 
 @router.get("/", response_model=List[schemas.ScreenPublic])
 def get_screens(
@@ -93,6 +117,13 @@ def get_screens(
     screens = db.query(models.Screen).filter(
         models.Screen.created_by_id == current_user.id
     ).offset(skip).limit(limit).all()
+
+    for screen in screens:
+        if screen.unique_key in manager.active_connections:
+            screen.is_online = True
+            _, start_time = manager.active_connections[screen.unique_key]
+            screen.connected_since = start_time
+
     return screens
 
 @router.put("/{screen_id}/re-pair", response_model=schemas.ScreenPublic)
@@ -111,28 +142,32 @@ async def re_pair_screen(
         raise HTTPException(status_code=404, detail="Ecranul de configurat nu a fost găsit.")
 
     new_player_instance = db.query(models.Screen).filter(
-        models.Screen.pairing_code == payload.new_pairing_code,
+        models.Screen.pairing_code == payload.new_pairing_code.upper(),
         models.Screen.is_active == False
     ).first()
 
     if not new_player_instance:
         raise HTTPException(status_code=404, detail="Niciun player nou cu acest cod de împerechere nu a fost găsit.")
 
+    new_player_instance.name = old_screen_config.name
+    new_player_instance.location = old_screen_config.location
+    new_player_instance.created_by_id = old_screen_config.created_by_id
+    new_player_instance.assigned_playlist_id = old_screen_config.assigned_playlist_id
+    new_player_instance.is_active = True
+    new_player_instance.pairing_code = None
+    new_player_instance.last_seen = datetime.now(timezone.utc)
+    
     old_unique_key = old_screen_config.unique_key
-    old_screen_config.unique_key = new_player_instance.unique_key
-    old_screen_config.last_seen = datetime.utcnow()
-    
-    db.delete(new_player_instance)
+    db.delete(old_screen_config)
     db.commit()
-    db.refresh(old_screen_config)
+    db.refresh(new_player_instance)
     
-    # Notificăm ambele playere (cel vechi, dacă mai e online, și cel nou)
-    await manager.send_to_screen("playlist_updated", old_unique_key)
-    await manager.send_to_screen("playlist_updated", old_screen_config.unique_key)
+    await manager.send_to_screen("screen_deleted", old_unique_key)
+    await manager.send_to_screen("playlist_updated", new_player_instance.unique_key)
 
-    return old_screen_config
+    return new_player_instance
 
-@router.delete("/{screen_id}", response_model=schemas.ScreenPublic)
+@router.delete("/{screen_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_screen(
     screen_id: int,
     db: Session = Depends(get_db),
@@ -152,8 +187,4 @@ async def delete_screen(
     
     await manager.send_to_screen("screen_deleted", unique_key)
     
-    # Pydantic nu poate serializa un obiect șters, deci returnăm un răspuns manual
-    # sau pur și simplu nu returnăm nimic (status 204 No Content)
-    from fastapi import Response
-    from fastapi import status
     return Response(status_code=status.HTTP_204_NO_CONTENT)

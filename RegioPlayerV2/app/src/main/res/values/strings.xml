@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RegioPlayer</string>
+
+    <string name="logo_content_description">RegioDisplay Logo</string>
+    <string name="dialog_yes">YES</string>
+    <string name="dialog_no">NO (%1$d)</string>
+
+    <string name="pairing_title">To activate this screen</string>
+    <string name="pairing_subtitle">Enter the following code in your administration panel:</string>
+    <string name="pairing_footer_auto_activate">The screen will activate automatically once the code is validated.</string>
+    <string name="pairing_footer_url_intro">Validation is done in the management interface at:</string>
+
+    <string name="downloading_title">Updating content...</string>
+    <string name="downloading_progress">Downloading: %1$s of %2$s</string>
+
+    <string name="player_empty_playlist">Empty playlist...</string>
+    <string name="player_image_content_description">Image from playlist</string>
+
+    <string name="exit_dialog_title">Are you sure you want to close the application?</string>
+
+    <string name="settings_get_new_code">Generate new code</string>
+    <string name="settings_orientation">Screen Orientation</string>
+    <string name="settings_orientation_standard">Standard</string>
+    <string name="settings_auto_relaunch">Auto-relaunch on close</string>
+    <string name="settings_auto_start">Auto-start on boot</string>
+    <string name="settings_exit">Exit</string>
+    <string name="settings_status">Screen Status</string>
+    <string name="settings_status_activated">Activated</string>
+    <string name="settings_status_not_activated">Not Activated</string>
+    <string name="settings_screen_label">Screen:</string>
+    <string name="settings_playlist_label">Playlist:</string>
+    <string name="settings_internet_label">Internet</string>
+    <string name="settings_internet_connected">Connected</string>
+    <string name="settings_internet_disconnected">Disconnected</string>
+    <string name="settings_activation_code">Activation Code</string>
+    <string name="settings_player_version">Player Version</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_dialog_title">Select Language</string>
+    <string name="settings_language_ro">Română</string>
+    <string name="settings_language_en">English</string>
+    <string name="status_no_playlist_assigned">No playlist assigned</string>
+    <string name="status_screen_not_activated">Screen not activated</string>
+
+    <string name="rotation_dialog_title">Select Screen Orientation</string>
+    <string name="rotation_0">Standard (0°)</string>
+    <string name="rotation_90">90° (Portrait)</string>
+    <string name="rotation_180">180° (Upside Down)</string>
+    <string name="rotation_270">270° (Portrait)</string>
+</resources>

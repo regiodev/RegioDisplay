@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RegioPlayer</string>
+
+    <string name="logo_content_description">Logo RegioDisplay</string>
+    <string name="dialog_yes">DA</string>
+    <string name="dialog_no">NU (%1$d)</string>
+
+    <string name="pairing_title">Pentru a activa acest ecran</string>
+    <string name="pairing_subtitle">Introduceți următorul cod în panoul de administrare:</string>
+    <string name="pairing_footer_auto_activate">Ecranul se va activa automat odată ce codul este validat.</string>
+    <string name="pairing_footer_url_intro">Validarea se face în interfața de management la adresa:</string>
+
+    <string name="downloading_title">Se actualizează conținutul...</string>
+    <string name="downloading_progress">Se descarcă: %1$s din %2$s</string>
+
+    <string name="player_empty_playlist">Playlist gol...</string>
+    <string name="player_image_content_description">Imagine din playlist</string>
+
+    <string name="exit_dialog_title">Sunteți sigur că doriți închiderea aplicației?</string>
+
+    <string name="settings_get_new_code">Generează cod nou</string>
+    <string name="settings_orientation">Orientare ecran</string>
+    <string name="settings_orientation_standard">Standard</string>
+    <string name="settings_auto_relaunch">Repornește automat la închidere</string>
+    <string name="settings_auto_start">Pornește automat la pornire</string>
+    <string name="settings_exit">Ieșire</string>
+    <string name="settings_status">Stare ecran</string>
+    <string name="settings_status_activated">Activat</string>
+    <string name="settings_status_not_activated">Neactivat</string>
+    <string name="settings_screen_label">Ecran:</string>
+    <string name="settings_playlist_label">Playlist:</string>
+    <string name="settings_internet_label">Internet</string>
+    <string name="settings_internet_connected">Conectat</string>
+    <string name="settings_internet_disconnected">Deconectat</string>
+    <string name="settings_activation_code">Cod de activare</string>
+    <string name="settings_player_version">Versiune player</string>
+    <string name="settings_language">Limbă</string>
+    <string name="settings_language_dialog_title">Selectează Limba</string>
+    <string name="settings_language_ro">Română</string>
+    <string name="settings_language_en">English</string>
+    <string name="status_no_playlist_assigned">Niciun playlist asignat</string>
+    <string name="status_screen_not_activated">Ecran neactivat</string>
+
+    <string name="rotation_dialog_title">Selectează Orientarea Ecranului</string>
+    <string name="rotation_0">Standard (0°)</string>
+    <string name="rotation_90">90° (Portret)</string>
+    <string name="rotation_180">180° (Întors)</string>
+    <string name="rotation_270">270° (Portret)</string>
+</resources>

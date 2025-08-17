@@ -1,7 +1,7 @@
 # Cale fișier: app/routers/auth_router.py
 
 import os
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -17,29 +17,31 @@ router = APIRouter(
     tags=["Authentication"]
 )
 
-# ... funcțiile login și verify_email rămân la fel ...
-
 @router.post("/login", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not auth.verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Adresa de email sau parola sunt incorecte.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email address before logging in.",
+            detail=f"Contul asociat cu adresa {user.email} nu a fost încă activat. Vă rugăm verificați email-ul pentru link-ul de activare.",
         )
 
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=10080)
     access_token = auth.create_access_token(
         data={"sub": user.email},
         expires_delta=access_token_expires
     )
+
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/verify-email")
@@ -67,8 +69,8 @@ def verify_email(token: str, db: Session = Depends(get_db)):
         db.commit()
 
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    return RedirectResponse(f"{frontend_url}/login?verified=true")
-
+    # --- MODIFICARE AICI: Schimbăm URL-ul de redirect ---
+    return RedirectResponse(f"{frontend_url}/verification-success")
 
 @router.post("/forgot-password")
 async def forgot_password(
@@ -80,10 +82,7 @@ async def forgot_password(
     if not user:
         return {"detail": "If an account with this email exists, a password reset link has been sent."}
 
-    # --- AICI ESTE CORECȚIA ---
-    # Folosim noua funcție dedicată pentru a crea token-ul
     token = auth.create_password_reset_token(data={"sub": user.email})
-
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     reset_link = f"{frontend_url}/reset-password?token={token}"
 
