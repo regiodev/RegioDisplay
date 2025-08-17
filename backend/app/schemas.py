@@ -141,7 +141,6 @@ class ScreenUpdate(BaseModel):
     name: Optional[str] = None
     location: Optional[str] = None
     rotation: Optional[int] = None
-    pairing_code: Optional[str] = None
     assigned_playlist_id: Optional[int] = None
 
 class PlaylistAssign(BaseModel):

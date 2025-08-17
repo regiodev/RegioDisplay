@@ -21,25 +21,25 @@ function EditScreenPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [screen, setScreen] = useState(null);
-  const [playlists, setPlaylists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [playlists, setPlaylists] = useState([]);
 
   // Form state
   const [name, setName] = useState('');
   const [selectedPlaylist, setSelectedPlaylist] = useState('null');
   const [rotation, setRotation] = useState(0);
   const [pairingCode, setPairingCode] = useState('');
+  const [originalPairingCode, setOriginalPairingCode] = useState('');
 
   useEffect(() => {
     const fetchScreenDetails = async () => {
       try {
         const screenResponse = await apiClient.get(`/screens/${id}`);
         const screenData = screenResponse.data;
-        setScreen(screenData);
         setName(screenData.name);
         setRotation(screenData.rotation || 0);
+        setOriginalPairingCode(screenData.pairing_code || '');
         setPairingCode(screenData.pairing_code || '');
         setSelectedPlaylist(screenData.assigned_playlist_id ? String(screenData.assigned_playlist_id) : 'null');
 
@@ -58,19 +58,36 @@ function EditScreenPage() {
 
   const handleSave = async () => {
     setSaving(true);
+    const hasPairingCodeChanged = pairingCode && pairingCode !== originalPairingCode;
+
     try {
-      const payload = {
+      let screenIdToUpdate = id;
+
+      if (hasPairingCodeChanged) {
+        try {
+          const rePairResponse = await apiClient.put(`/screens/${id}/re-pair`, { new_pairing_code: pairingCode });
+          screenIdToUpdate = rePairResponse.data.id; // Use the new screen ID for the final update
+          toast({ title: 'Succes', description: 'Ecranul a fost re-împerecheat cu succes.' });
+        } catch (rePairError) {
+          toast({ variant: 'destructive', title: 'Eroare Re-împerechere', description: rePairError.response?.data?.detail || 'Codul de împerechere este invalid sau deja folosit.' });
+          setSaving(false);
+          return; // Stop execution if re-pairing fails
+        }
+      }
+
+      const finalPayload = {
         name,
         rotation,
-        pairing_code: pairingCode,
         assigned_playlist_id: selectedPlaylist === 'null' ? null : parseInt(selectedPlaylist, 10),
       };
 
-      await apiClient.put(`/screens/${id}`, payload);
+      await apiClient.put(`/screens/${screenIdToUpdate}`, finalPayload);
+      
       toast({ title: 'Succes!', description: 'Setările ecranului au fost salvate.' });
       navigate('/screens');
+
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Eroare la salvare', description: 'Nu s-au putut salva modificările.' });
+      toast({ variant: 'destructive', title: 'Eroare la Salvarea Finală', description: 'Re-împerecherea a avut succes, dar salvarea celorlalte detalii a eșuat.' });
     } finally {
       setSaving(false);
     }
@@ -87,47 +104,28 @@ function EditScreenPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><Tv className="mr-2" /> Nume Ecran</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Numele ecranului" />
-        </CardContent>
+        <CardHeader><CardTitle className="flex items-center"><Tv className="mr-2" /> Nume Ecran</CardTitle></CardHeader>
+        <CardContent><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Numele ecranului" /></CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><ListVideo className="mr-2" /> Playlist Asignat</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="flex items-center"><ListVideo className="mr-2" /> Playlist Asignat</CardTitle></CardHeader>
         <CardContent>
           <Select value={selectedPlaylist} onValueChange={setSelectedPlaylist}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selectează un playlist" />
-            </SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Selectează un playlist" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="null">Niciun playlist</SelectItem>
-              {playlists.map(p => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-              ))}
+              {playlists.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><RotateCw className="mr-2" /> Rotație Ecran</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="flex items-center"><RotateCw className="mr-2" /> Rotație Ecran</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {rotationOptions.map(opt => (
-            <div
-              key={opt.value}
-              onClick={() => setRotation(opt.value)}
-              className={cn(
-                'flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer transition-all',
-                rotation === opt.value ? 'border-primary bg-primary/10 text-primary' : 'border-transparent hover:border-slate-300 dark:hover:border-slate-700'
-              )}
-            >
+            <div key={opt.value} onClick={() => setRotation(opt.value)} className={cn('flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer transition-all', rotation === opt.value ? 'border-primary bg-primary/10 text-primary' : 'border-transparent hover:border-slate-300 dark:hover:border-slate-700')}>
               {opt.icon}
               <span className="mt-2 text-sm font-medium">{opt.label}</span>
             </div>
@@ -136,19 +134,15 @@ function EditScreenPage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><KeyRound className="mr-2" /> Re-împerechere</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="flex items-center"><KeyRound className="mr-2" /> Re-împerechere</CardTitle></CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-2">Modifică acest cod doar dacă dorești să re-împerechezi un dispozitiv fizic cu acest ecran.</p>
-          <Input value={pairingCode} onChange={(e) => setPairingCode(e.target.value)} placeholder="Cod de împerechere" />
+          <p className="text-sm text-muted-foreground mb-2">Introduceți noul cod de 6 caractere pentru a transfera aceste setări pe un dispozitiv nou.</p>
+          <Input value={pairingCode} onChange={(e) => setPairingCode(e.target.value.toUpperCase())} placeholder="COD-NOU" className="uppercase tracking-widest text-center font-mono" maxLength={6} />
         </CardContent>
       </Card>
 
       <div className="flex justify-end items-center gap-4 pt-4">
-        <Button variant="outline" onClick={() => navigate('/screens')} disabled={saving}>
-          <X className="mr-2 h-4 w-4"/> Renunță
-        </Button>
+        <Button variant="outline" onClick={() => navigate('/screens')} disabled={saving}><X className="mr-2 h-4 w-4"/> Renunță</Button>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
           Salvează Modificările
