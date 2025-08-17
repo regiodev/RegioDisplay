@@ -48,7 +48,8 @@ function ScreensPage() {
       setLoading(true);
       try {
         const response = await apiClient.get('/screens/');
-        setScreens(response.data);
+        const sortedScreens = response.data.sort((a, b) => a.name.localeCompare(b.name));
+        setScreens(sortedScreens);
         if (showToast) {
           toast({ title: 'Succes', description: 'Lista de ecrane a fost actualizată.' });
         }
