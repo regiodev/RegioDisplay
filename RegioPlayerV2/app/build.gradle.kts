@@ -13,8 +13,8 @@ android {
         applicationId = "ro.regio_cloud.display"
         minSdk = 21
         targetSdk = 35
-        versionCode = 9
-        versionName = "2.2.0"
+        versionCode = 10
+        versionName = "2.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
