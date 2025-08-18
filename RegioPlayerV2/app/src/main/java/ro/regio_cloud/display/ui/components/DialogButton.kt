@@ -23,25 +23,24 @@ import androidx.tv.material3.Text
 fun DialogButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var isFocused by remember { mutableStateOf(false) }
     val buttonShape = RoundedCornerShape(8.dp)
-
-    // Stil mai evident pentru selecție: background alb solid și text negru
-    val containerColor = if (isFocused) Color.White else Color(0xFF3D3D3D)
-    val contentColor = if (isFocused) Color.Black else Color.White
     val fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium
 
     Button(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
             .onFocusChanged { focusState -> isFocused = focusState.isFocused },
         shape = ButtonDefaults.shape(shape = buttonShape),
         colors = ButtonDefaults.colors(
-            containerColor = containerColor,
-            contentColor = contentColor
+            containerColor = Color(0xFF3D3D3D),      // Culoare de fundal normală
+            contentColor = Color.White,             // Culoare text normală
+            focusedContainerColor = Color.White,    // Culoare de fundal la focus
+            focusedContentColor = Color.Black       // Culoare text la focus
         )
     ) {
         Text(
-            text = text, 
-            fontSize = 15.sp, 
+            text = text,
+            fontSize = 15.sp,
             fontWeight = fontWeight
         )
     }
