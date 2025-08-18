@@ -338,19 +338,228 @@ def run_ffmpeg_with_progress(command: list, media_file_id: int, total_duration: 
     
     return subprocess.CompletedProcess(progress_command, process.returncode, stdout, stderr)
 
-def generate_thumbnail(video_path: str, thumbnail_path: str):
+def analyze_video_brightness(video_path: str, timestamp: float):
+    """Analizează luminozitatea unei scene la un timestamp dat"""
     try:
+        # Folosește ffmpeg pentru a calcula direct luminozitatea medie
+        # Aceasta este o metodă mai eficientă care nu necesită numpy
+        result = (
+            ffmpeg
+            .input(video_path, ss=timestamp)
+            .output('pipe:', vframes=1, vf='scale=100:100,format=gray,crop=80:80:10:10')  # Crop centru pentru analiză
+            .run(capture_stdout=True, capture_stderr=True, quiet=True)
+        )
+        
+        # Calculează luminozitatea folosind lungimea datelor ca aproximare
+        # Frame-urile mai luminoase tind să aibă mai multe date
+        if len(result[0]) > 0:
+            # Aproximare bazată pe densitatea datelor (0-255)
+            data_density = len(result[0]) / 6400  # 80x80 = 6400 pixels
+            brightness = min(255, data_density * 100)  # Normalizare
+            
+            # Metodă alternativă: analiză simplă prin sampling
+            frame_bytes = result[0]
+            if len(frame_bytes) > 100:
+                # Sample din fiecare al 10-lea byte pentru a estima luminozitatea
+                sample_bytes = frame_bytes[::10]
+                brightness = sum(sample_bytes) / len(sample_bytes) if sample_bytes else 0
+            
+            return brightness
+        return 0
+        
+    except Exception as e:
+        # Fallback: folosește timestamp-ul ca proxy pentru diversitate de conținut
+        # Video-uri cu multe scene tind să aibă conținut mai interesant la mijloc
+        print(f"DEBUG: Nu pot analiza luminozitatea la {timestamp}s: {e}")
+        # Returnează o valoare bazată pe poziția în video (preferă mijlocul)
+        return 50 + (timestamp % 10) * 5  # Valoare variabilă între 50-95
+
+def find_best_thumbnail_timestamp(video_path: str, duration: float):
+    """
+    Găsește cel mai bun timestamp pentru thumbnail bazat pe luminozitate și poziție
+    
+    Strategia:
+    1. Evită primul și ultimul 10% din video (pot fi negre/generice)
+    2. Încearcă mai multe poziții și alege cea cu cel mai bun scor
+    3. Combină luminozitatea cu poziția preferată (mijlocul este preferat)
+    4. Fallback inteligent pentru video-uri problematice
+    """
+    # Calculează limitele safe pentru a evita intro/outro
+    min_start_time = 3  # Minim 3 secunde pentru a evita fade-in
+    start_safe = max(min_start_time, duration * 0.1)  # 10% din video sau 3s
+    end_safe = min(duration - 3, duration * 0.85)     # 85% din video sau 3s înainte de sfârșit
+    
+    # Pentru video-uri foarte scurte (<15s), folosește o strategie diferită
+    if duration < 15:
+        return max(2, duration * 0.4)  # 40% din video, dar nu mai puțin de 2s
+    
+    if start_safe >= end_safe:
+        return duration / 2
+    
+    # Poziții candidate cu priorități diferite
+    candidate_positions = [
+        (duration * 0.3, 1.0),   # 30% - prioritate maximă (evită intro)
+        (duration * 0.25, 0.9),  # 25% - prioritate mare
+        (duration * 0.4, 0.8),   # 40% - prioritate bună
+        (duration * 0.5, 0.7),   # 50% (mijloc) - prioritate medie
+        (duration * 0.35, 0.9),  # 35% - prioritate mare
+        (duration * 0.6, 0.6),   # 60% - prioritate mai mică
+    ]
+    
+    # Filtrează pozițiile să fie în zona safe și adaugă scorul de poziție
+    safe_positions = [(pos, priority) for pos, priority in candidate_positions 
+                     if start_safe <= pos <= end_safe]
+    
+    if not safe_positions:
+        return duration / 2
+    
+    best_timestamp = safe_positions[0][0]
+    best_score = 0
+    analysis_count = min(len(safe_positions), 4)  # Limitează la 4 analize pentru performanță
+    
+    print(f"DEBUG: Analizez {analysis_count} poziții candidate pentru thumbnail (video {duration:.1f}s)")
+    
+    # Analizează pozițiile candidate
+    for i, (timestamp, position_priority) in enumerate(safe_positions[:analysis_count]):
+        try:
+            brightness = analyze_video_brightness(video_path, timestamp)
+            
+            # Calculează scorul combinat: luminozitate + prioritate poziție
+            brightness_score = min(100, brightness) / 100  # Normalizare 0-1
+            combined_score = (brightness_score * 0.7) + (position_priority * 0.3)
+            
+            print(f"DEBUG: Poziția {timestamp:.1f}s - luminozitate: {brightness:.1f}, scor: {combined_score:.2f}")
+            
+            # Preferă frame-uri cu luminozitate decentă (>25) și scor bun
+            if combined_score > best_score and brightness > 25:
+                best_score = combined_score
+                best_timestamp = timestamp
+                
+        except Exception as e:
+            print(f"DEBUG: Eroare la analiza poziției {timestamp:.1f}s: {e}")
+            continue
+    
+    # Dacă niciun candidat nu a avut luminozitate decentă, folosește poziții alternative
+    if best_score < 0.4:
+        print(f"DEBUG: Scor prea mic ({best_score:.2f}), încerc poziții alternative...")
+        alternative_positions = [
+            duration * 0.2,   # 20% din video
+            duration * 0.45,  # 45% din video  
+            duration * 0.7,   # 70% din video
+        ]
+        
+        for timestamp in alternative_positions:
+            if start_safe <= timestamp <= end_safe:
+                try:
+                    brightness = analyze_video_brightness(video_path, timestamp)
+                    print(f"DEBUG: Poziția alternativă {timestamp:.1f}s - luminozitate: {brightness:.1f}")
+                    
+                    if brightness > 20:  # Standard mai jos pentru video-uri dificile
+                        best_timestamp = timestamp
+                        best_score = brightness / 100
+                        break
+                except Exception:
+                    continue
+    
+    print(f"DEBUG: Thumbnail selectat la {best_timestamp:.1f}s (scor final: {best_score:.2f})")
+    return best_timestamp
+
+def generate_image_thumbnail(image_path: str, thumbnail_path: str, max_size: int = 300):
+    """
+    Generează thumbnail pentru imagini folosind FFmpeg
+    
+    Args:
+        image_path: Calea către imaginea originală
+        thumbnail_path: Calea unde va fi salvat thumbnail-ul
+        max_size: Dimensiunea maximă pentru thumbnail (px)
+    """
+    try:
+        # Folosește FFmpeg pentru a genera thumbnail din imagine
         (
             ffmpeg
-            .input(video_path, ss=1)
-            .output(thumbnail_path, vframes=1)
+            .input(image_path)
+            .output(
+                thumbnail_path, 
+                vf=f'scale={max_size}:{max_size}:force_original_aspect_ratio=decrease',
+                **{'q:v': 2}  # Calitate bună pentru thumbnail
+            )
             .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
+            .run(capture_stdout=True, capture_stderr=True, quiet=True)
         )
+        print(f"INFO: Thumbnail pentru imagine generat cu succes: {thumbnail_path}")
         return True
-    except ffmpeg.Error as e:
-        print(f"EROARE la generarea thumbnail-ului: {e.stderr.decode('utf8')}")
+        
+    except Exception as e:
+        print(f"EROARE la generarea thumbnail-ului pentru imagine: {e}")
         return False
+
+def generate_thumbnail(video_path: str, thumbnail_path: str):
+    """
+    Generează thumbnail inteligent pentru video
+    Încearcă să găsească cel mai bun frame bazat pe luminozitate și poziție
+    """
+    try:
+        # Obține informații despre video
+        probe = ffmpeg.probe(video_path)
+        duration = float(probe['format']['duration'])
+        
+        # Găsește cel mai bun timestamp pentru thumbnail
+        best_timestamp = find_best_thumbnail_timestamp(video_path, duration)
+        
+        # Generează thumbnail-ul la timestamp-ul optim
+        (
+            ffmpeg
+            .input(video_path, ss=best_timestamp)
+            .output(thumbnail_path, vframes=1, **{'q:v': 2})  # Calitate mai bună pentru thumbnail
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True, quiet=True)
+        )
+        
+        print(f"INFO: Thumbnail generat cu succes la {best_timestamp:.1f}s pentru {video_path}")
+        return True
+        
+    except Exception as e:
+        print(f"EROARE la generarea thumbnail-ului inteligent: {e}")
+        
+        # Fallback la metoda simplă dacă cea inteligentă eșuează
+        try:
+            print("DEBUG: Algoritmul inteligent a eșuat, încerc metoda simplă de fallback...")
+            
+            # Încercare cu mai multe poziții de fallback
+            fallback_positions = [5, 10, 3, 15, 8]  # Poziții în secunde
+            
+            for fb_position in fallback_positions:
+                try:
+                    (
+                        ffmpeg
+                        .input(video_path, ss=fb_position)
+                        .output(thumbnail_path, vframes=1, **{'q:v': 3})
+                        .overwrite_output()
+                        .run(capture_stdout=True, capture_stderr=True, quiet=True)
+                    )
+                    print(f"INFO: Thumbnail generat cu metoda de fallback la {fb_position}s")
+                    return True
+                except ffmpeg.Error:
+                    continue
+            
+            # Ultima încercare - primul frame disponibil
+            try:
+                (
+                    ffmpeg
+                    .input(video_path)
+                    .output(thumbnail_path, vframes=1, **{'q:v': 3})
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True)
+                )
+                print("INFO: Thumbnail generat cu ultimul fallback (primul frame)")
+                return True
+            except ffmpeg.Error as final_error:
+                print(f"EROARE: Toate metodele de generare thumbnail au eșuat: {final_error}")
+                return False
+                
+        except Exception as fallback_error:
+            print(f"EROARE în fallback-ul de thumbnail: {fallback_error}")
+            return False
 
 def run_ffmpeg_with_progress(command: list, media_file_id: int, total_duration: float):
     """Rulează FFmpeg cu progress tracking în timp real din stderr"""
@@ -669,6 +878,7 @@ async def upload_media_files(
             await out_file.write(content)
 
         is_video = file.content_type and file.content_type.startswith("video/")
+        is_image = file.content_type and file.content_type.startswith("image/")
         
         video_duration = None
         if is_video:
@@ -678,10 +888,25 @@ async def upload_media_files(
             except Exception:
                 pass
 
+        # Generează thumbnail pentru imagini imediat
+        thumbnail_filename = None
+        if is_image:
+            try:
+                thumbnail_filename = f"{uuid.uuid4()}.jpg"
+                thumbnail_full_path = f"{THUMBNAIL_DIRECTORY}/{thumbnail_filename}"
+                
+                if generate_image_thumbnail(file_path, thumbnail_full_path):
+                    print(f"INFO: Thumbnail generat pentru imaginea {file.filename}")
+                else:
+                    thumbnail_filename = None  # Dacă generarea eșuează
+            except Exception as e:
+                print(f"EROARE la generarea thumbnail-ului pentru imagine {file.filename}: {e}")
+                thumbnail_filename = None
+
         db_media_file = models.MediaFile(
             filename=file.filename,
             path=file_path,
-            thumbnail_path=None,
+            thumbnail_path=thumbnail_filename,  # Setează thumbnail pentru imagini
             type=file.content_type,
             size=file.size,
             duration=video_duration,
@@ -707,6 +932,286 @@ async def upload_media_files(
             print(f"INFO: Adăugat batch de {len(video_processing_queue)} video-uri pentru procesarea în paralel.")
 
     return created_files
+
+
+# --- CHUNK UPLOAD ENDPOINTS ---
+
+@router.post("/chunk/initiate")
+async def initiate_chunk_upload(
+    filename: str,
+    file_size: int,
+    content_type: str,
+    chunk_size: int = 5 * 1024 * 1024,  # 5MB chunks by default
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Inițiază un upload chunk și returnează upload_id"""
+    # Verifică quota
+    current_usage_bytes = db.query(func.sum(models.MediaFile.size)).filter(
+        models.MediaFile.uploaded_by_id == current_user.id
+    ).scalar() or 0
+    quota_bytes = current_user.disk_quota_mb * 1024 * 1024
+    
+    if current_usage_bytes + file_size > quota_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload failed. Exceeds your disk quota of {current_user.disk_quota_mb} MB."
+        )
+    
+    upload_id = str(uuid.uuid4())
+    file_extension = filename.split('.')[-1]
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    final_path = f"{MEDIA_DIRECTORY}/{unique_filename}"
+    
+    # Salvează informațiile în temp storage (în practică ar fi Redis sau DB)
+    # Pentru simplitate, folosesc un dicționar global
+    if not hasattr(initiate_chunk_upload, 'active_uploads'):
+        initiate_chunk_upload.active_uploads = {}
+    
+    initiate_chunk_upload.active_uploads[upload_id] = {
+        'filename': filename,
+        'unique_filename': unique_filename,
+        'final_path': final_path,
+        'file_size': file_size,
+        'content_type': content_type,
+        'chunk_size': chunk_size,
+        'chunks_received': set(),
+        'total_chunks': (file_size + chunk_size - 1) // chunk_size,
+        'user_id': current_user.id,
+        'created_at': datetime.now(timezone.utc)
+    }
+    
+    return {
+        'upload_id': upload_id,
+        'chunk_size': chunk_size,
+        'total_chunks': initiate_chunk_upload.active_uploads[upload_id]['total_chunks']
+    }
+
+
+@router.post("/chunk/upload/{upload_id}")
+async def upload_chunk(
+    upload_id: str,
+    chunk_number: int,
+    chunk: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Upload-ează un chunk individual"""
+    if not hasattr(initiate_chunk_upload, 'active_uploads'):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    
+    if upload_id not in initiate_chunk_upload.active_uploads:
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    
+    upload_info = initiate_chunk_upload.active_uploads[upload_id]
+    
+    # Verifică dacă utilizatorul este autorizat
+    if upload_info['user_id'] != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    # Salvează chunk-ul
+    chunk_path = f"{MEDIA_DIRECTORY}/chunks/{upload_id}_{chunk_number}"
+    os.makedirs(os.path.dirname(chunk_path), exist_ok=True)
+    
+    async with aiofiles.open(chunk_path, 'wb') as f:
+        content = await chunk.read()
+        await f.write(content)
+    
+    # Marchează chunk-ul ca primit
+    upload_info['chunks_received'].add(chunk_number)
+    
+    return {
+        'chunk_number': chunk_number,
+        'chunks_received': len(upload_info['chunks_received']),
+        'total_chunks': upload_info['total_chunks'],
+        'upload_complete': len(upload_info['chunks_received']) == upload_info['total_chunks']
+    }
+
+
+@router.post("/chunk/complete/{upload_id}")
+async def complete_chunk_upload(
+    upload_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Finalizează upload-ul chunk și asamblează fișierul"""
+    if not hasattr(initiate_chunk_upload, 'active_uploads'):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    
+    if upload_id not in initiate_chunk_upload.active_uploads:
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    
+    upload_info = initiate_chunk_upload.active_uploads[upload_id]
+    
+    # Verifică dacă utilizatorul este autorizat
+    if upload_info['user_id'] != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    # Verifică dacă toate chunk-urile au fost primite
+    if len(upload_info['chunks_received']) != upload_info['total_chunks']:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Incomplete upload. Received {len(upload_info['chunks_received'])}/{upload_info['total_chunks']} chunks"
+        )
+    
+    # Asamblează fișierul
+    final_path = upload_info['final_path']
+    async with aiofiles.open(final_path, 'wb') as final_file:
+        for chunk_num in sorted(upload_info['chunks_received']):
+            chunk_path = f"{MEDIA_DIRECTORY}/chunks/{upload_id}_{chunk_num}"
+            async with aiofiles.open(chunk_path, 'rb') as chunk_file:
+                chunk_data = await chunk_file.read()
+                await final_file.write(chunk_data)
+            # Șterge chunk-ul după utilizare
+            os.remove(chunk_path)
+    
+    # Șterge directorul chunks dacă este gol
+    try:
+        os.rmdir(f"{MEDIA_DIRECTORY}/chunks")
+    except OSError:
+        pass  # Directorul nu este gol sau nu există
+    
+    # Creează înregistrarea în baza de date
+    is_video = upload_info['content_type'] and upload_info['content_type'].startswith("video/")
+    is_image = upload_info['content_type'] and upload_info['content_type'].startswith("image/")
+    
+    video_duration = None
+    if is_video:
+        try:
+            probe = ffmpeg.probe(final_path)
+            video_duration = float(probe['format']['duration'])
+        except Exception:
+            pass
+    
+    # Generează thumbnail pentru imagini mari (chunk upload)
+    thumbnail_filename = None
+    if is_image:
+        try:
+            thumbnail_filename = f"{uuid.uuid4()}.jpg"
+            thumbnail_full_path = f"{THUMBNAIL_DIRECTORY}/{thumbnail_filename}"
+            
+            if generate_image_thumbnail(final_path, thumbnail_full_path):
+                print(f"INFO: Thumbnail generat pentru imaginea mare {upload_info['filename']}")
+            else:
+                thumbnail_filename = None
+        except Exception as e:
+            print(f"EROARE la generarea thumbnail-ului pentru imaginea mare {upload_info['filename']}: {e}")
+            thumbnail_filename = None
+    
+    db_media_file = models.MediaFile(
+        filename=upload_info['filename'],
+        path=final_path,
+        thumbnail_path=thumbnail_filename,  # Setează thumbnail pentru imagini
+        type=upload_info['content_type'],
+        size=upload_info['file_size'],
+        duration=video_duration,
+        uploaded_by_id=current_user.id,
+        processing_status=ProcessingStatus.PENDING if is_video else ProcessingStatus.COMPLETED
+    )
+    db.add(db_media_file)
+    db.commit()
+    db.refresh(db_media_file)
+    
+    # Procesează video-ul dacă este necesar
+    if is_video:
+        background_tasks.add_task(process_video_background_task, db_media_file.id, final_path)
+    
+    # Curăță sesiunea de upload
+    del initiate_chunk_upload.active_uploads[upload_id]
+    
+    return db_media_file
+
+
+@router.delete("/chunk/cancel/{upload_id}")
+async def cancel_chunk_upload(
+    upload_id: str,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Anulează un upload chunk și curăță fișierele temporare"""
+    if not hasattr(initiate_chunk_upload, 'active_uploads'):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    
+    if upload_id not in initiate_chunk_upload.active_uploads:
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    
+    upload_info = initiate_chunk_upload.active_uploads[upload_id]
+    
+    # Verifică dacă utilizatorul este autorizat
+    if upload_info['user_id'] != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    # Șterge toate chunk-urile
+    for chunk_num in upload_info['chunks_received']:
+        chunk_path = f"{MEDIA_DIRECTORY}/chunks/{upload_id}_{chunk_num}"
+        try:
+            os.remove(chunk_path)
+        except FileNotFoundError:
+            pass
+    
+    # Curăță sesiunea
+    del initiate_chunk_upload.active_uploads[upload_id]
+    
+    return {"message": "Upload cancelled successfully"}
+
+
+@router.post("/regenerate-thumbnails")
+async def regenerate_image_thumbnails(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Regenerează thumbnail-uri pentru toate imaginile utilizatorului care nu au thumbnail"""
+    
+    # Găsește toate imaginile fără thumbnail
+    images_without_thumbnails = db.query(models.MediaFile).filter(
+        models.MediaFile.uploaded_by_id == current_user.id,
+        models.MediaFile.type.like('image/%'),
+        models.MediaFile.thumbnail_path.is_(None)
+    ).all()
+    
+    if not images_without_thumbnails:
+        return {"message": "Toate imaginile au deja thumbnail-uri", "count": 0}
+    
+    # Regenerează thumbnail-uri în background
+    background_tasks.add_task(
+        regenerate_thumbnails_task, 
+        [img.id for img in images_without_thumbnails]
+    )
+    
+    return {
+        "message": f"Started thumbnail generation for {len(images_without_thumbnails)} images",
+        "count": len(images_without_thumbnails)
+    }
+
+
+def regenerate_thumbnails_task(image_ids: list):
+    """Task pentru regenerarea thumbnail-urilor în background"""
+    db = SessionLocal()
+    
+    try:
+        for image_id in image_ids:
+            image_file = db.query(models.MediaFile).filter(models.MediaFile.id == image_id).first()
+            if not image_file:
+                continue
+            
+            try:
+                thumbnail_filename = f"{uuid.uuid4()}.jpg"
+                thumbnail_full_path = f"{THUMBNAIL_DIRECTORY}/{thumbnail_filename}"
+                
+                if generate_image_thumbnail(image_file.path, thumbnail_full_path):
+                    image_file.thumbnail_path = thumbnail_filename
+                    db.commit()
+                    print(f"INFO: Thumbnail regenerat pentru imaginea {image_file.filename}")
+                else:
+                    print(f"WARNING: Nu s-a putut genera thumbnail pentru {image_file.filename}")
+                    
+            except Exception as e:
+                print(f"EROARE la regenerarea thumbnail-ului pentru {image_file.filename}: {e}")
+                continue
+                
+    finally:
+        db.close()
 
 
 @router.get("/", response_model=schemas.PaginatedResponse[schemas.MediaFilePublic])

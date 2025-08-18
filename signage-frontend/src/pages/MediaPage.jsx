@@ -148,6 +148,19 @@ const MediaPreview = ({ file }) => {
   const isProcessing =
     file.processing_status === 'PENDING' || file.processing_status === 'PROCESSING';
 
+  // Determină sursa imaginii - prioritizează thumbnail-ul dacă există
+  const getImageSrc = () => {
+    if (file.thumbnail_path) {
+      return `${thumbnailBaseUrl}${file.thumbnail_path}`;
+    }
+    if (file.type.startsWith('image/')) {
+      return `${mediaServeUrl}${file.id}`;
+    }
+    return null;
+  };
+
+  const imageSrc = getImageSrc();
+
   return (
     <div className="relative w-full h-full">
       {isProcessing && (
@@ -157,21 +170,20 @@ const MediaPreview = ({ file }) => {
         </div>
       )}
 
-      {file.type.startsWith('image/') && (
+      {imageSrc ? (
         <img
-          src={`${mediaServeUrl}${file.id}`}
+          src={imageSrc}
           alt={file.filename}
           className="w-full h-full object-cover"
+          loading="lazy" // Lazy loading pentru performanță
+          onError={(e) => {
+            // Fallback la imaginea originală dacă thumbnail-ul eșuează
+            if (file.type.startsWith('image/') && file.thumbnail_path && e.target.src.includes('thumbnails')) {
+              e.target.src = `${mediaServeUrl}${file.id}`;
+            }
+          }}
         />
-      )}
-      {file.thumbnail_path && (
-        <img
-          src={`${thumbnailBaseUrl}${file.thumbnail_path}`}
-          alt={file.filename}
-          className="w-full h-full object-cover"
-        />
-      )}
-      {!file.type.startsWith('image/') && !file.thumbnail_path && (
+      ) : (
         <div className="flex flex-col items-center justify-center h-full bg-muted text-muted-foreground">
           <File className="w-10 h-10" />
           <span className="mt-2 text-xs text-center px-1">{file.filename}</span>
@@ -320,14 +332,59 @@ function MediaPage() {
     }
   };
 
-  const handleFilesStaged = (files) => {
-    const newFiles = Array.from(files).map((file) => ({
-      id: `${file.name}-${file.lastModified}-${file.size}`, // Cheie mai unică
-      file,
-      status: 'staged', // staged | uploading | success | error
-      progress: 0,
-    }));
-    setStagedFiles((prev) => [...prev, ...newFiles]);
+  const handleFilesStaged = async (files) => {
+    const filesArray = Array.from(files);
+    const processedFiles = [];
+
+    for (const file of filesArray) {
+      let processedFile = file;
+      let isCompressed = false;
+      
+      // Compresie imagini mari
+      if (file.type.startsWith('image/') && file.size > IMAGE_COMPRESSION_THRESHOLD) {
+        try {
+          setStagedFiles((prev) => [...prev, {
+            id: `${file.name}-${file.lastModified}-${file.size}`,
+            file,
+            status: 'compressing',
+            progress: 0,
+            originalSize: file.size
+          }]);
+
+          const compressedBlob = await compressImage(file);
+          if (compressedBlob && compressedBlob.size < file.size) {
+            // Creează un nou File object cu numele original
+            processedFile = new File([compressedBlob], file.name, {
+              type: file.type,
+              lastModified: file.lastModified,
+            });
+            isCompressed = true;
+          }
+
+          // Elimină fișierul temporar din listă
+          setStagedFiles((prev) => prev.filter(f => f.id !== `${file.name}-${file.lastModified}-${file.size}`));
+        } catch (error) {
+          console.warn('Compresie eșuată pentru', file.name, error);
+          // Continuă cu fișierul original
+        }
+      }
+
+      const stagedFile = {
+        id: `${file.name}-${file.lastModified}-${file.size}`,
+        file: processedFile,
+        originalFile: isCompressed ? file : undefined,
+        status: 'staged',
+        progress: 0,
+        isCompressed,
+        compressionRatio: isCompressed ? ((file.size - processedFile.size) / file.size * 100).toFixed(1) : undefined,
+        priority: file.type.startsWith('image/') ? 1 : file.type.startsWith('video/') ? 3 : 2, // imagini = 1 (prioritate mare), audio = 2, video = 3
+        isLargeFile: processedFile.size > LARGE_FILE_THRESHOLD
+      };
+
+      processedFiles.push(stagedFile);
+    }
+
+    setStagedFiles((prev) => [...prev, ...processedFiles]);
   };
 
   const handleRemoveStagedFile = (id) => {
@@ -359,23 +416,168 @@ function MediaPage() {
     }
   };
 
+  const handleRegenerateThumbnails = async () => {
+    try {
+      const response = await apiClient.post('/media/regenerate-thumbnails');
+      
+      if (response.data.count === 0) {
+        toast({
+          title: 'Info',
+          description: 'Toate imaginile au deja thumbnail-uri.',
+        });
+      } else {
+        toast({
+          title: 'Procesare începută',
+          description: `Se generează thumbnail-uri pentru ${response.data.count} imagini în background.`,
+        });
+        
+        // Reîmprospătează lista după 3 secunde
+        setTimeout(() => {
+          fetchMediaFiles();
+        }, 3000);
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Eroare',
+        description: 'Nu s-au putut regenera thumbnail-urile.',
+      });
+    }
+  };
+
+  // Constante pentru optimizări
+  const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+  const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB
+  const IMAGE_COMPRESSION_THRESHOLD = 2 * 1024 * 1024; // 2MB
+
+  // Funcție pentru compresie imagini
+  const compressImage = async (file, quality = 0.8, maxWidth = 1920, maxHeight = 1080) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculează dimensiunile noi păstrând aspectul
+        let { width, height } = img;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width *= ratio;
+          height *= ratio;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Desenează imaginea redimensionată
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convertește înapoi în blob
+        canvas.toBlob(resolve, file.type, quality);
+      };
+      
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Funcție pentru chunk upload
+  const uploadFileInChunks = async (stagedFile) => {
+    const file = stagedFile.file;
+    let upload_id;
+    
+    try {
+      // Inițiază upload-ul chunk
+      const initResponse = await apiClient.post('/media/chunk/initiate', null, {
+        params: {
+          filename: file.name,
+          file_size: file.size,
+          content_type: file.type,
+          chunk_size: CHUNK_SIZE
+        }
+      });
+      
+      const { upload_id: uploadId, chunk_size, total_chunks } = initResponse.data;
+      upload_id = uploadId;
+      
+      // Upload-ează chunk-urile în paralel (cu limita de 3 paralel)
+      const uploadChunk = async (chunkNumber) => {
+        const start = chunkNumber * chunk_size;
+        const end = Math.min(start + chunk_size, file.size);
+        const chunkBlob = file.slice(start, end);
+        
+        const formData = new FormData();
+        formData.append('chunk', chunkBlob);
+        
+        await apiClient.post(`/media/chunk/upload/${upload_id}`, formData, {
+          params: { chunk_number: chunkNumber },
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            const chunkProgress = (progressEvent.loaded / progressEvent.total) * 100;
+            const overallProgress = ((chunkNumber * 100) + chunkProgress) / total_chunks;
+            setStagedFiles((prev) =>
+              prev.map((f) => (f.id === stagedFile.id ? { 
+                ...f, 
+                progress: Math.round(overallProgress),
+                chunkInfo: `Chunk ${chunkNumber + 1}/${total_chunks}`
+              } : f)),
+            );
+          },
+        });
+      };
+      
+      // Upload chunk-uri în batch-uri de 3
+      const batchSize = 3;
+      for (let i = 0; i < total_chunks; i += batchSize) {
+        const batch = [];
+        for (let j = i; j < Math.min(i + batchSize, total_chunks); j++) {
+          batch.push(uploadChunk(j));
+        }
+        await Promise.all(batch);
+      }
+      
+      // Finalizează upload-ul
+      const completeResponse = await apiClient.post(`/media/chunk/complete/${upload_id}`);
+      
+      return { success: true, file: stagedFile, data: completeResponse.data };
+      
+    } catch (error) {
+      // În caz de eroare, încearcă să anulezi upload-ul dacă upload_id există
+      if (typeof upload_id !== 'undefined') {
+        try {
+          await apiClient.delete(`/media/chunk/cancel/${upload_id}`);
+        } catch (cancelError) {
+          console.warn('Failed to cancel chunk upload:', cancelError);
+        }
+      }
+      
+      throw error;
+    }
+  };
+
   // Funcție pentru upload cu retry logic
   const uploadFileWithRetry = async (stagedFile, maxRetries = 3) => {
     let retryCount = 0;
     
     const attemptUpload = async () => {
-      const formData = new FormData();
-      formData.append('files', stagedFile.file);
-      
-      return apiClient.post('/media/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setStagedFiles((prev) =>
-            prev.map((f) => (f.id === stagedFile.id ? { ...f, progress: percentCompleted } : f)),
-          );
-        },
-      });
+      // Folosește chunk upload pentru fișiere mari, upload normal pentru cele mici
+      if (stagedFile.isLargeFile) {
+        return await uploadFileInChunks(stagedFile);
+      } else {
+        const formData = new FormData();
+        formData.append('files', stagedFile.file);
+        
+        const response = await apiClient.post('/media/', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setStagedFiles((prev) =>
+              prev.map((f) => (f.id === stagedFile.id ? { ...f, progress: percentCompleted } : f)),
+            );
+          },
+        });
+        
+        return { success: true, file: stagedFile, data: response.data };
+      }
     };
 
     while (retryCount <= maxRetries) {
@@ -429,13 +631,35 @@ function MediaPage() {
     }
 
     try {
-      // Upload paralel pentru toate fișierele
-      const uploadPromises = filesToUpload.map(stagedFile => 
-        uploadFileWithRetry(stagedFile)
-      );
-      
-      // Așteaptă toate upload-urile să se termine
-      const results = await Promise.allSettled(uploadPromises);
+      // Sortează fișierele după prioritate (1 = prioritate mare, 3 = prioritate mică)
+      // Apoi după dimensiune (fișierele mici primele în fiecare categorie de prioritate)
+      const sortedFiles = filesToUpload.sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority; // Prioritate mai mică = mai important
+        }
+        return a.file.size - b.file.size; // Fișiere mai mici primele
+      });
+
+      // Grupează fișierele în batch-uri pentru upload paralel controlat
+      const batchSize = 3; // Maximum 3 fișiere în paralel
+      const results = [];
+
+      for (let i = 0; i < sortedFiles.length; i += batchSize) {
+        const batch = sortedFiles.slice(i, i + batchSize);
+        
+        // Upload-ează batch-ul curent în paralel
+        const batchPromises = batch.map(stagedFile => 
+          uploadFileWithRetry(stagedFile)
+        );
+        
+        const batchResults = await Promise.allSettled(batchPromises);
+        results.push(...batchResults);
+        
+        // Scurtă pauză între batch-uri pentru a nu suprasolicita serverul
+        if (i + batchSize < sortedFiles.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
       
       // Analizează rezultatele
       const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
@@ -553,16 +777,61 @@ function MediaPage() {
                 </div>
                 Fișiere pregătite pentru încărcare
               </CardTitle>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-1">
+                    <div className="w-3 h-3 bg-green-100 dark:bg-green-900/30 rounded flex items-center justify-center">
+                      <File className="h-2 w-2 text-green-600 dark:text-green-400" />
+                    </div>
+                    Imagini (prioritate mare)
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <div className="w-3 h-3 bg-yellow-100 dark:bg-yellow-900/30 rounded flex items-center justify-center">
+                      <File className="h-2 w-2 text-yellow-600 dark:text-yellow-400" />
+                    </div>
+                    Audio (prioritate medie)
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <div className="w-3 h-3 bg-red-100 dark:bg-red-900/30 rounded flex items-center justify-center">
+                      <File className="h-2 w-2 text-red-600 dark:text-red-400" />
+                    </div>
+                    Video (prioritate mică)
+                  </span>
+                </div>
+                <p>📦 Fișiere &gt;100MB folosesc chunk upload • 🗜️ Imagini &gt;2MB se comprimă automat</p>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3 max-h-96 overflow-y-auto">
               {stagedFiles.map((item) => (
                 <div key={item.id} className="space-y-2 p-3 bg-muted/20 rounded-lg border border-border/50">
                   <div className="flex justify-between items-center text-sm">
                     <div className="flex items-center space-x-2 flex-1 min-w-0">
-                      <div className="p-1 bg-blue-100 dark:bg-blue-900/30 rounded">
-                        <File className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                      <div className={cn(
+                        "p-1 rounded",
+                        item.priority === 1 && "bg-green-100 dark:bg-green-900/30", // imagini - prioritate mare
+                        item.priority === 2 && "bg-yellow-100 dark:bg-yellow-900/30", // audio - prioritate medie  
+                        item.priority === 3 && "bg-red-100 dark:bg-red-900/30", // video - prioritate mică
+                        !item.priority && "bg-blue-100 dark:bg-blue-900/30"
+                      )}>
+                        <File className={cn(
+                          "h-3 w-3",
+                          item.priority === 1 && "text-green-600 dark:text-green-400",
+                          item.priority === 2 && "text-yellow-600 dark:text-yellow-400",
+                          item.priority === 3 && "text-red-600 dark:text-red-400",
+                          !item.priority && "text-blue-600 dark:text-blue-400"
+                        )} />
                       </div>
-                      <span className="truncate font-medium">{item.file.name}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="truncate font-medium block">{item.file.name}</span>
+                        {item.isLargeFile && (
+                          <span className="text-xs text-orange-500 dark:text-orange-400">📦 Fișier mare - chunk upload</span>
+                        )}
+                        {item.isCompressed && (
+                          <span className="text-xs text-green-500 dark:text-green-400">
+                            🗜️ Comprimat -{item.compressionRatio}%
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-muted-foreground font-mono text-xs">{formatBytes(item.file.size)}</span>
@@ -606,10 +875,14 @@ function MediaPage() {
                       ✗ {item.error || 'Eroare la încărcare'}
                     </p>
                   )}
+                  {item.status === 'compressing' && (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400">🗜️ Se comprimă imaginea...</p>
+                  )}
                   {item.status === 'uploading' && (
                     <div className="flex items-center justify-between text-xs">
                       <p className="text-blue-600 dark:text-blue-400">
                         📤 Se încarcă... {item.progress}%
+                        {item.chunkInfo && <span className="ml-1">({item.chunkInfo})</span>}
                       </p>
                       {item.retryCount && (
                         <p className="text-orange-500 dark:text-orange-400">
@@ -687,6 +960,17 @@ function MediaPage() {
                     className="w-full md:w-64 pl-10 h-12"
                   />
                 </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegenerateThumbnails}
+                  className="flex items-center gap-2"
+                  title="Regenerează thumbnail-uri pentru imaginile existente"
+                >
+                  <Settings className="h-4 w-4" />
+                  <span className="hidden sm:inline">Regenerează Thumbnails</span>
+                </Button>
                 
                 <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
                   <Button
