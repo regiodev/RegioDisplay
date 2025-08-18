@@ -12,16 +12,27 @@ from . import models
 from .database import engine, SessionLocal
 from .routers import auth_router, users_router, media_router, playlist_router, screen_router, client_router, admin_router, dashboard_router, reports_router
 from .connection_manager import manager
+from .routers.media_router import set_main_event_loop
 
 
 models.Base.metadata.create_all(bind=engine)
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    set_main_event_loop()
+    yield
+    # Shutdown (dacă este necesar)
 
 app = FastAPI(
     title="Digital Signage Management API",
     description="Backend-ul pentru sistemul de management de conținut media.",
     version="1.0.0",
     docs_url="/api/docs",
-    openapi_url="/api/openapi.json"
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan
 )
 
 # --- MODIFICARE FINALĂ: Căi absolute și diagnosticare ---

@@ -5,7 +5,6 @@ package ro.regio_cloud.display.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -31,7 +30,7 @@ import ro.regio_cloud.display.BuildConfig
 import ro.regio_cloud.display.R
 import ro.regio_cloud.display.ui.components.DialogButton
 import ro.regio_cloud.display.viewmodels.PlayerUiState
-import androidx.compose.foundation.layout.fillMaxHeight
+import ro.regio_cloud.display.viewmodels.PlayerViewModel
 
 @Composable
 fun SettingsMenu(
@@ -44,10 +43,15 @@ fun SettingsMenu(
     onLanguageSelected: (String) -> Unit,
     onClose: () -> Unit,
     onExitRequest: () -> Unit,
-    currentRotation: Int
+    currentRotation: Int,
+    playerViewModel: PlayerViewModel // Adăugăm ViewModel-ul
 ) {
     val menuFocusRequester = remember { FocusRequester() }
     var showLanguageDialog by remember { mutableStateOf(false) }
+
+    // Colectăm stările pentru Kiosk Mode din ViewModel
+    val autoStartEnabled by playerViewModel.autoStartOnBoot.collectAsState()
+    val autoRelaunchEnabled by playerViewModel.autoRelaunchOnCrash.collectAsState()
 
     val languageDisplayValue = when (currentLanguageCode) {
         "ro" -> stringResource(R.string.settings_language_ro)
@@ -75,9 +79,8 @@ fun SettingsMenu(
         else -> playlistName
     }
 
-    // --- MODIFICARE 2: Adăugăm o mică întârziere înainte de a seta focusul ---
     LaunchedEffect(Unit) {
-        delay(200) // Așteaptă 200 milisecunde
+        delay(200)
         menuFocusRequester.requestFocus()
     }
 
@@ -94,7 +97,6 @@ fun SettingsMenu(
                 .width(550.dp)
                 .background(Color(0xFF1F1F1F))
                 .clickable(enabled = false, onClick = {})
-                // --- MODIFICARE 1: Aplicăm rotația pe întregul meniu ---
                 .rotate(currentRotation.toFloat())
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -135,14 +137,14 @@ fun SettingsMenu(
                 ToggleMenuItem(
                     text = stringResource(R.string.settings_auto_relaunch),
                     icon = Icons.Filled.RestartAlt,
-                    checked = false,
-                    onCheckedChange = { /* TODO */ }
+                    checked = autoRelaunchEnabled,
+                    onCheckedChange = { playerViewModel.setAutoRelaunch(it) }
                 )
                 ToggleMenuItem(
                     text = stringResource(R.string.settings_auto_start),
                     icon = Icons.Filled.PowerSettingsNew,
-                    checked = true,
-                    onCheckedChange = { /* TODO */ }
+                    checked = autoStartEnabled,
+                    onCheckedChange = { playerViewModel.setAutoStart(it) }
                 )
                 ActionMenuItem(
                     text = stringResource(R.string.settings_exit),
@@ -282,7 +284,7 @@ private fun ToggleMenuItem(
             .fillMaxWidth()
             .onFocusChanged { focusState -> isFocused = focusState.isFocused }
             .background(backgroundColor)
-            .clickable { onCheckedChange(!checked) }
+            .clickable { onCheckedChange(!checked) } // Am inversat aici, deoarece ToggleMenuItem nu primește direct noua stare
             .padding(horizontal = 16.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -292,7 +294,7 @@ private fun ToggleMenuItem(
         Spacer(modifier = Modifier.weight(1f))
         Switch(
             checked = checked,
-            onCheckedChange = null,
+            onCheckedChange = null, // Acțiunea este pe rândul întreg
             modifier = Modifier.scale(0.8f)
         )
     }

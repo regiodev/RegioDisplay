@@ -37,6 +37,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiClient from '../api/axios';
 import { useAuth } from '../contexts/AuthContext';
+import VideoProcessingProgress from '../components/VideoProcessingProgress';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -333,56 +334,149 @@ function MediaPage() {
     setStagedFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const handleUpload = async () => {
-    setIsUploading(true);
-    for (const stagedFile of stagedFiles) {
-      // Verificăm dacă fișierul este încă în starea 'staged' înainte de a încerca să-l încărcăm
-      if (stagedFiles.find((f) => f.id === stagedFile.id)?.status !== 'staged') continue;
+  const handleRetryFailedFile = async (id) => {
+    const fileToRetry = stagedFiles.find(f => f.id === id);
+    if (!fileToRetry || fileToRetry.status !== 'error') return;
 
+    // Resetează statusul fișierului la 'staged' pentru a permite retry
+    setStagedFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, status: 'staged', progress: 0, error: undefined } : f)),
+    );
+
+    // Upload individual pentru acest fișier
+    try {
+      await uploadFileWithRetry(fileToRetry);
+      toast({ 
+        title: 'Retry reușit', 
+        description: `Fișierul ${fileToRetry.file.name} a fost încărcat cu succes.` 
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Retry eșuat',
+        description: `Fișierul ${fileToRetry.file.name} nu a putut fi încărcat.`,
+      });
+    }
+  };
+
+  // Funcție pentru upload cu retry logic
+  const uploadFileWithRetry = async (stagedFile, maxRetries = 3) => {
+    let retryCount = 0;
+    
+    const attemptUpload = async () => {
       const formData = new FormData();
       formData.append('files', stagedFile.file);
+      
+      return apiClient.post('/media/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setStagedFiles((prev) =>
+            prev.map((f) => (f.id === stagedFile.id ? { ...f, progress: percentCompleted } : f)),
+          );
+        },
+      });
+    };
 
+    while (retryCount <= maxRetries) {
       try {
         setStagedFiles((prev) =>
-          prev.map((f) => (f.id === stagedFile.id ? { ...f, status: 'uploading' } : f)),
+          prev.map((f) => (f.id === stagedFile.id ? { 
+            ...f, 
+            status: 'uploading',
+            retryCount: retryCount > 0 ? retryCount : undefined 
+          } : f)),
         );
 
-        await apiClient.post('/media/', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setStagedFiles((prev) =>
-              prev.map((f) => (f.id === stagedFile.id ? { ...f, progress: percentCompleted } : f)),
-            );
-          },
-        });
-
+        await attemptUpload();
+        
         setStagedFiles((prev) =>
-          prev.map((f) => (f.id === stagedFile.id ? { ...f, status: 'success' } : f)),
+          prev.map((f) => (f.id === stagedFile.id ? { ...f, status: 'success', retryCount: undefined } : f)),
         );
+        
+        return { success: true, file: stagedFile };
       } catch (error) {
-        setStagedFiles((prev) =>
-          prev.map((f) => (f.id === stagedFile.id ? { ...f, status: 'error' } : f)),
-        );
-        toast({
-          variant: 'destructive',
-          title: `Eroare la încărcarea ${stagedFile.file.name}`,
-          description: error.response?.data?.detail || 'A apărut o problemă.',
-        });
-        setIsUploading(false); // Oprim procesul la prima eroare
-        return;
+        retryCount++;
+        
+        if (retryCount > maxRetries) {
+          setStagedFiles((prev) =>
+            prev.map((f) => (f.id === stagedFile.id ? { 
+              ...f, 
+              status: 'error',
+              retryCount: undefined,
+              error: error.response?.data?.detail || 'Eroare la încărcare'
+            } : f)),
+          );
+          return { success: false, file: stagedFile, error };
+        }
+        
+        // Așteaptă înainte de retry (exponential backoff)
+        const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+  };
 
-    setIsUploading(false);
-    toast({ title: 'Finalizat', description: 'Procesul de încărcare s-a terminat.' });
+  const handleUpload = async () => {
+    setIsUploading(true);
+    
+    // Filtrăm doar fișierele care sunt în starea 'staged'
+    const filesToUpload = stagedFiles.filter(f => f.status === 'staged');
+    
+    if (filesToUpload.length === 0) {
+      setIsUploading(false);
+      return;
+    }
 
-    // După un scurt timp pentru ca utilizatorul să vadă barele verzi, curățăm lista și reîmprospătăm datele
+    try {
+      // Upload paralel pentru toate fișierele
+      const uploadPromises = filesToUpload.map(stagedFile => 
+        uploadFileWithRetry(stagedFile)
+      );
+      
+      // Așteaptă toate upload-urile să se termine
+      const results = await Promise.allSettled(uploadPromises);
+      
+      // Analizează rezultatele
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
+      
+      // Afișează rezultatele
+      if (successful > 0 && failed === 0) {
+        toast({ 
+          title: 'Succes complet', 
+          description: `Toate cele ${successful} fișiere au fost încărcate cu succes.` 
+        });
+      } else if (successful > 0 && failed > 0) {
+        toast({ 
+          title: 'Încărcare parțială', 
+          description: `${successful} fișiere încărcate cu succes, ${failed} au eșuat.`,
+          variant: 'destructive'
+        });
+      } else {
+        toast({ 
+          title: 'Eroare completă', 
+          description: `Toate cele ${failed} fișiere au eșuat la încărcare.`,
+          variant: 'destructive'
+        });
+      }
+      
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Eroare neașteptată',
+        description: 'A apărut o eroare în timpul procesului de încărcare.',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+
+    // Curăță fișierele cu succes după un timp scurt
     setTimeout(() => {
       setStagedFiles((prev) => prev.filter((f) => f.status !== 'success'));
       fetchMediaFiles();
       refreshUser();
-    }, 1500);
+    }, 2000);
   };
 
   const isAllSelected = useMemo(
@@ -472,12 +566,24 @@ function MediaPage() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-muted-foreground font-mono text-xs">{formatBytes(item.file.size)}</span>
+                      {item.status === 'error' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                          onClick={() => handleRetryFailedFile(item.id)}
+                          disabled={isUploading}
+                          title="Reîncearcă upload-ul"
+                        >
+                          <Loader2 className="h-3 w-3 text-blue-500" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
                         onClick={() => handleRemoveStagedFile(item.id)}
-                        disabled={isUploading}
+                        disabled={isUploading && item.status === 'uploading'}
                       >
                         <Trash2 className="h-3 w-3 text-red-500" />
                       </Button>
@@ -489,13 +595,28 @@ function MediaPage() {
                       'h-2',
                       item.status === 'success' && '[&>div]:bg-green-500',
                       item.status === 'error' && '[&>div]:bg-red-500',
+                      item.status === 'uploading' && '[&>div]:bg-blue-500',
                     )}
                   />
                   {item.status === 'success' && (
                     <p className="text-xs text-green-600 dark:text-green-400">✓ Încărcat cu succes</p>
                   )}
                   {item.status === 'error' && (
-                    <p className="text-xs text-red-600 dark:text-red-400">✗ Eroare la încărcare</p>
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      ✗ {item.error || 'Eroare la încărcare'}
+                    </p>
+                  )}
+                  {item.status === 'uploading' && (
+                    <div className="flex items-center justify-between text-xs">
+                      <p className="text-blue-600 dark:text-blue-400">
+                        📤 Se încarcă... {item.progress}%
+                      </p>
+                      {item.retryCount && (
+                        <p className="text-orange-500 dark:text-orange-400">
+                          Reîncercare {item.retryCount}/3
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -517,18 +638,18 @@ function MediaPage() {
               )}
               <Button
                 onClick={handleUpload}
-                disabled={isUploading || isOverQuota || stagedFiles.length === 0}
+                disabled={isUploading || isOverQuota || stagedFiles.filter((f) => f.status === 'staged').length === 0}
                 size="lg"
               >
                 {isUploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Se încarcă...
+                    Upload paralel în curs...
                   </>
                 ) : (
                   <>
                     <Upload className="mr-2 h-4 w-4" />
-                    Încarcă Acum ({stagedFiles.filter((f) => f.status === 'staged').length})
+                    Încarcă Paralel ({stagedFiles.filter((f) => f.status === 'staged').length})
                   </>
                 )}
               </Button>
@@ -638,9 +759,11 @@ function MediaPage() {
                           )}
                         </div>
                         {file.processing_status && file.processing_status !== 'COMPLETED' && (
-                          <div className="flex items-center gap-1 mt-2">
-                            <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
-                            <span className="text-xs text-amber-600 dark:text-amber-400">În procesare...</span>
+                          <div className="mt-2">
+                            <VideoProcessingProgress 
+                              mediaFile={file} 
+                              onProcessingComplete={() => fetchMediaFiles()} 
+                            />
                           </div>
                         )}
                       </div>
@@ -711,9 +834,11 @@ function MediaPage() {
                           </td>
                           <td className="px-6 py-4">
                             {file.processing_status && file.processing_status !== 'COMPLETED' ? (
-                              <div className="flex items-center gap-2">
-                                <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
-                                <span className="text-xs text-amber-600 dark:text-amber-400">În procesare</span>
+                              <div className="min-w-[200px]">
+                                <VideoProcessingProgress 
+                                  mediaFile={file} 
+                                  onProcessingComplete={() => fetchMediaFiles()} 
+                                />
                               </div>
                             ) : (
                               <span className="text-xs text-green-600 dark:text-green-400">✓ Complet</span>

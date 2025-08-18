@@ -43,6 +43,10 @@ class MediaFile(Base):
     tags = Column(String, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     processing_status = Column(SQLAlchemyEnum(ProcessingStatus), nullable=False, server_default=ProcessingStatus.COMPLETED.name)
+    processing_progress = Column(Float, default=0.0, nullable=False)  # 0-100 pentru progres procentual
+    processing_eta = Column(Integer, nullable=True)  # timp estimat rămas în secunde
+    processing_speed = Column(String, nullable=True)  # viteză de procesare (ex: "2.5x")
+    processing_started_at = Column(DateTime(timezone=True), nullable=True)
     uploaded_by_id = Column(Integer, ForeignKey("users.id"))
     uploader = relationship("User")
 

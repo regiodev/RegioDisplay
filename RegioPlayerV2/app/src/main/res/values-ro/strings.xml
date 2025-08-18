@@ -22,8 +22,8 @@
     <string name="settings_get_new_code">Generează cod nou</string>
     <string name="settings_orientation">Orientare ecran</string>
     <string name="settings_orientation_standard">Standard</string>
-    <string name="settings_auto_relaunch">Repornește automat la închidere</string>
-    <string name="settings_auto_start">Pornește automat la pornire</string>
+    <string name="settings_auto_relaunch">Repornire automata la erori</string>
+    <string name="settings_auto_start">Lanseaza automat la pornire</string>
     <string name="settings_exit">Ieșire</string>
     <string name="settings_status">Stare ecran</string>
     <string name="settings_status_activated">Activat</string>

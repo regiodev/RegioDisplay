@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.os.LocaleListCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.work.*
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
@@ -30,15 +31,13 @@ import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
 import com.google.gson.Gson
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import ro.regio_cloud.display.data.PlaylistRepository
 import ro.regio_cloud.display.data.UserPreferencesRepository
+import ro.regio_cloud.display.kiosk.KioskManager
 import ro.regio_cloud.display.network.RetrofitClient
-import ro.regio_cloud.display.ui.screens.DownloadingScreen
-import ro.regio_cloud.display.ui.screens.ExitConfirmationDialog
-import ro.regio_cloud.display.ui.screens.PairingScreen
-import ro.regio_cloud.display.ui.screens.PlayerScreen
-import ro.regio_cloud.display.ui.screens.SettingsMenu
+import ro.regio_cloud.display.ui.screens.*
 import ro.regio_cloud.display.ui.theme.RegioPlayerV2Theme
 import ro.regio_cloud.display.viewmodels.PlayerUiState
 import ro.regio_cloud.display.viewmodels.PlayerViewModel
@@ -50,6 +49,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : AppCompatActivity() {
 
     private val userPrefsRepo by lazy { UserPreferencesRepository(this) }
+    private val kioskManager by lazy { KioskManager(this) }
     private val workManager by lazy { WorkManager.getInstance(this) }
 
     private lateinit var appUpdateManager: AppUpdateManager
@@ -66,7 +66,8 @@ class MainActivity : AppCompatActivity() {
                 apiService = RetrofitClient.apiService,
                 filesDir = this.filesDir,
                 gson = Gson()
-            )
+            ),
+            kioskManager = kioskManager
         )
     }
 
@@ -75,6 +76,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Inițializăm Kiosk Mode pe baza preferințelor salvate
+        lifecycleScope.launch {
+            val autoRelaunch = userPrefsRepo.autoRelaunchOnCrashFlow.first()
+            kioskManager.setAutoRelaunchState(autoRelaunch)
+        }
 
         val resolution = getScreenResolutionString()
         playerViewModel.initialize(resolution)
@@ -90,7 +97,6 @@ class MainActivity : AppCompatActivity() {
                 val scope = rememberCoroutineScope()
                 val currentLanguage by userPrefsRepo.languageFlow.collectAsState(initial = "ro")
 
-                // PlayerScreen în propriul Box pentru a nu se recompune cu meniul
                 val successState = uiState as? PlayerUiState.Success
                 if (successState != null) {
                     val currentItem by playerViewModel.currentItem.collectAsState()
@@ -106,7 +112,6 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
-                // Alte stări UI
                 when (val state = uiState) {
                     is PlayerUiState.Loading -> PairingScreen(pairingCode = "...", rotationDegrees = rotation)
                     is PlayerUiState.Downloading -> DownloadingScreen(
@@ -120,14 +125,11 @@ class MainActivity : AppCompatActivity() {
                     is PlayerUiState.Success -> { }
                 }
 
-                // Meniul în overlay separat
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (isMenuVisible) {
                         val pairingCode by userPrefsRepo.pairingCodeFlow.collectAsState(initial = null)
                         val screenName by userPrefsRepo.screenNameFlow.collectAsState(initial = null)
                         val playlistName by userPrefsRepo.playlistNameFlow.collectAsState(initial = null)
-
-                        // --- AICI ESTE CORECȚIA ---
                         val context = LocalContext.current
 
                         SettingsMenu(
@@ -135,7 +137,7 @@ class MainActivity : AppCompatActivity() {
                             pairingCode = pairingCode,
                             screenName = screenName,
                             playlistName = playlistName,
-                            isInternetConnected = isNetworkAvailable(context), // Am înlocuit 'this' cu 'context'
+                            isInternetConnected = isNetworkAvailable(context),
                             currentLanguageCode = currentLanguage,
                             onLanguageSelected = { langCode ->
                                 scope.launch {
@@ -149,7 +151,8 @@ class MainActivity : AppCompatActivity() {
                                 isMenuVisible = false
                                 showExitDialog = true
                             },
-                            currentRotation = rotation
+                            currentRotation = rotation,
+                            playerViewModel = playerViewModel // Am adăugat viewModel-ul
                         )
                     }
 

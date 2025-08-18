@@ -22,8 +22,8 @@
     <string name="settings_get_new_code">Generate new code</string>
     <string name="settings_orientation">Screen Orientation</string>
     <string name="settings_orientation_standard">Standard</string>
-    <string name="settings_auto_relaunch">Auto-relaunch on close</string>
-    <string name="settings_auto_start">Auto-start on boot</string>
+    <string name="settings_auto_relaunch">Auto-relaunch on error</string>
+    <string name="settings_auto_start">Auto-launch on boot</string>
     <string name="settings_exit">Exit</string>
     <string name="settings_status">Screen Status</string>
     <string name="settings_status_activated">Activated</string>

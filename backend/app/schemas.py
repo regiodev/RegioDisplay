@@ -72,6 +72,10 @@ class MediaFilePublic(BaseModel):
     thumbnail_path: Optional[str] = None
     uploaded_at: datetime
     processing_status: ProcessingStatus
+    processing_progress: float = 0.0
+    processing_eta: Optional[int] = None
+    processing_speed: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

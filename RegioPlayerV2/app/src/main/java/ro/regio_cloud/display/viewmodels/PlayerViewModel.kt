@@ -1,5 +1,3 @@
-// Cale fișier: app/src/main/java/ro/regio_cloud/display/viewmodels/PlayerViewModel.kt
-
 package ro.regio_cloud.display.viewmodels
 
 import android.util.Log
@@ -10,6 +8,7 @@ import ro.regio_cloud.display.BuildConfig
 import ro.regio_cloud.display.data.PlaylistRepository
 import ro.regio_cloud.display.data.ScreenNotActivatedException
 import ro.regio_cloud.display.data.ScreenNotFoundException
+import ro.regio_cloud.display.kiosk.KioskManager
 import ro.regio_cloud.display.network.WebSocketClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,7 +23,8 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class PlayerViewModel(
-    private val repository: PlaylistRepository
+    private val repository: PlaylistRepository,
+    private val kioskManager: KioskManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<PlayerUiState>(PlayerUiState.Loading)
@@ -36,9 +36,15 @@ class PlayerViewModel(
     private val _playbackLoopId = MutableStateFlow(0)
     val playbackLoopId: StateFlow<Int> = _playbackLoopId
 
-    // --- MODIFICARE: Expunem rotația ca StateFlow ---
     val rotation: StateFlow<Int> = repository.userPrefsRepo.rotationFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Kiosk Mode Flows
+    val autoStartOnBoot = repository.userPrefsRepo.autoStartOnBootFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val autoRelaunchOnCrash = repository.userPrefsRepo.autoRelaunchOnCrashFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     private var stateManagementJob: Job? = null
     private var playbackJob: Job? = null
@@ -58,6 +64,20 @@ class PlayerViewModel(
         startStateMachine()
     }
 
+    // Kiosk Mode Setters
+    fun setAutoStart(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.userPrefsRepo.saveAutoStartOnBoot(enabled)
+            kioskManager.setBootReceiverState(enabled)
+        }
+    }
+
+    fun setAutoRelaunch(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.userPrefsRepo.saveAutoRelaunchOnCrash(enabled)
+            kioskManager.setAutoRelaunchState(enabled)
+        }
+    }
 
     private fun startStateMachine() {
         stateManagementJob?.cancel()
@@ -114,14 +134,10 @@ class PlayerViewModel(
                 }
                 else -> {
                     Log.w("ViewModel", "Eroare de sincronizare temporară: ${exception?.message}")
-                    // În loc să setez Error imediat, încerc să rămân în starea curentă
-                    // și să las polling-ul sau alte mecanisme să reîncerce
                     val currentState = _uiState.value
                     if (currentState is PlayerUiState.NeedsActivation) {
-                        // Dacă eram în activare, rămân în activare - polling-ul va reîncerca
                         Log.i("ViewModel", "Rămân în starea de activare pentru reîncercare")
                     } else {
-                        // Doar în cazuri extreme setez Error
                         Log.e("ViewModel", "Eroare persistentă de sincronizare, se setează Error")
                         _uiState.value = PlayerUiState.Error("Eroare necunoscută")
                     }
@@ -181,7 +197,6 @@ class PlayerViewModel(
                 
                 if (syncResult.isSuccess) {
                     Log.d("ViewModel-Polling", "✅ Activare detectată prin polling! Se repornește mașina de stări.")
-                    // În loc să apelez startStateMachine() direct, setez doar Success
                     val playlist = syncResult.getOrNull()!!
                     currentPlaylistId = playlist.id
                     val localItems = mapPlaylistToLocalItems(playlist)
@@ -279,12 +294,13 @@ class PlayerViewModel(
 }
 
 class PlayerViewModelFactory(
-    private val repository: PlaylistRepository
+    private val repository: PlaylistRepository,
+    private val kioskManager: KioskManager
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PlayerViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return PlayerViewModel(repository) as T
+            return PlayerViewModel(repository, kioskManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

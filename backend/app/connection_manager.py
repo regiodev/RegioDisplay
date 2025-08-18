@@ -8,6 +8,7 @@ from datetime import datetime, timezone # Am adăugat timezone
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, Tuple[WebSocket, datetime]] = {}
+        self.user_connections: Dict[int, List[WebSocket]] = {}  # user_id -> lista WebSocket-uri pentru progress updates
 
     async def connect(self, websocket: WebSocket, screen_key: str):
         await websocket.accept()
@@ -35,5 +36,41 @@ class ConnectionManager:
         
         if tasks:
             await asyncio.gather(*tasks)
+    
+    async def connect_user_progress(self, websocket: WebSocket, user_id: int):
+        """Conectează un WebSocket pentru progress updates pentru un utilizator"""
+        await websocket.accept()
+        if user_id not in self.user_connections:
+            self.user_connections[user_id] = []
+        self.user_connections[user_id].append(websocket)
+    
+    def disconnect_user_progress(self, websocket: WebSocket, user_id: int):
+        """Deconectează WebSocket-ul de progress pentru un utilizator"""
+        if user_id in self.user_connections:
+            if websocket in self.user_connections[user_id]:
+                self.user_connections[user_id].remove(websocket)
+            if not self.user_connections[user_id]:
+                del self.user_connections[user_id]
+    
+    async def send_progress_update(self, user_id: int, media_file_data: dict):
+        """Trimite update de progress către toate conexiunile unui utilizator"""
+        if user_id in self.user_connections:
+            message = {
+                "type": "media_progress",
+                "data": media_file_data
+            }
+            tasks = []
+            for websocket in self.user_connections[user_id].copy():  # copy pentru thread safety
+                try:
+                    tasks.append(websocket.send_json(message))
+                except Exception:
+                    # Conexiunea s-a închis, o eliminăm
+                    self.user_connections[user_id].remove(websocket)
+            
+            if tasks:
+                try:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                except Exception as e:
+                    print(f"Eroare la trimiterea progress update pentru user {user_id}: {e}")
 
 manager = ConnectionManager()

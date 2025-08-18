@@ -3,6 +3,7 @@ package ro.regio_cloud.display.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -26,9 +27,32 @@ class UserPreferencesRepository(context: Context) {
         val CACHED_SCREEN_NAME = stringPreferencesKey("cached_screen_name")
         val CACHED_PLAYLIST_NAME = stringPreferencesKey("cached_playlist_name")
         val LANGUAGE = stringPreferencesKey("language_preference")
-
-        // --- MODIFICARE 1: Am adăugat cheia pentru timestamp ---
         val ROTATION_TIMESTAMP = stringPreferencesKey("rotation_timestamp")
+
+        // Chei pentru Kiosk Mode
+        val AUTO_START_ON_BOOT = booleanPreferencesKey("auto_start_on_boot")
+        val AUTO_RELAUNCH_ON_CRASH = booleanPreferencesKey("auto_relaunch_on_crash")
+    }
+
+    // --- Setări Kiosk Mode ---
+    val autoStartOnBootFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.AUTO_START_ON_BOOT] ?: false
+    }
+
+    suspend fun saveAutoStartOnBoot(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTO_START_ON_BOOT] = enabled
+        }
+    }
+
+    val autoRelaunchOnCrashFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.AUTO_RELAUNCH_ON_CRASH] ?: true
+    }
+
+    suspend fun saveAutoRelaunchOnCrash(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTO_RELAUNCH_ON_CRASH] = enabled
+        }
     }
 
     // --- Preferința de Limbă ---
@@ -68,7 +92,6 @@ class UserPreferencesRepository(context: Context) {
         }
     }
 
-    // --- MODIFICARE 2: Am adăugat fluxul pentru timestamp și am actualizat funcția de salvare ---
     // --- Rotația Ecranului și Timestamp ---
     val rotationFlow: Flow<Int> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.SCREEN_ROTATION] ?: 0
@@ -84,7 +107,6 @@ class UserPreferencesRepository(context: Context) {
             preferences[PreferencesKeys.ROTATION_TIMESTAMP] = timestamp
         }
     }
-    // --- FINAL MODIFICARE 2 ---
 
     // --- Nume Ecran (Cache) ---
     val screenNameFlow: Flow<String?> = dataStore.data.map { preferences ->
