@@ -33,8 +33,3 @@ data class PlaybackLog(
     @SerializedName("timestamp") val timestamp: String
 )
 
-// --- MODIFICARE 2: Am adăugat un nou model de date pentru a trimite actualizările ---
-data class ClientRotationUpdate(
-    @SerializedName("rotation") val rotation: Int,
-    @SerializedName("timestamp") val timestamp: String
-)

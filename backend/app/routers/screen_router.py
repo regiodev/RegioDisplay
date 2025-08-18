@@ -86,6 +86,10 @@ async def set_screen_rotation(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
+    print(f"=== ACTUALIZARE ROTAȚIE DIN FRONTEND ===")
+    print(f"Screen ID: {screen_id}")
+    print(f"Rotația nouă: {payload.rotation}°")
+    
     db_screen = db.query(models.Screen).filter(
         models.Screen.id == screen_id,
         models.Screen.created_by_id == current_user.id
@@ -97,12 +101,22 @@ async def set_screen_rotation(
     if payload.rotation not in [0, 90, 180, 270]:
         raise HTTPException(status_code=400, detail="Invalid rotation value. Must be 0, 90, 180, or 270.")
 
+    old_rotation = db_screen.rotation
+    old_timestamp = db_screen.rotation_updated_at
+    new_timestamp = datetime.now(timezone.utc)
+    
+    print(f"Rotație veche: {old_rotation}°")
+    print(f"Timestamp vechi: {old_timestamp}")
+    print(f"Timestamp nou: {new_timestamp}")
+
     db_screen.rotation = payload.rotation
-    db_screen.rotation_updated_at = datetime.now(timezone.utc)
+    db_screen.rotation_updated_at = new_timestamp
     db.commit()
     db.refresh(db_screen)
 
+    print(f"✅ Rotație salvată în DB. Se trimite WebSocket notification...")
     await manager.send_to_screen("playlist_updated", db_screen.unique_key)
+    print(f"✅ WebSocket notification trimisă la {db_screen.unique_key}")
     
     return db_screen
 # --- FINAL ENDPOINT NOU ---

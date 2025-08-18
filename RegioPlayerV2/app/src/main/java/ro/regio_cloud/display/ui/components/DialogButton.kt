@@ -24,8 +24,10 @@ fun DialogButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
     var isFocused by remember { mutableStateOf(false) }
     val buttonShape = RoundedCornerShape(8.dp)
 
-    val containerColor = if (isFocused) Color.White else Color.DarkGray.copy(alpha = 0.5f)
+    // Stil mai evident pentru selecție: background alb solid și text negru
+    val containerColor = if (isFocused) Color.White else Color(0xFF3D3D3D)
     val contentColor = if (isFocused) Color.Black else Color.White
+    val fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium
 
     Button(
         onClick = onClick,
@@ -37,7 +39,10 @@ fun DialogButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
             contentColor = contentColor
         )
     ) {
-        // --- MODIFICARE: Font redus de la 16.sp la 15.sp ---
-        Text(text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(
+            text = text, 
+            fontSize = 15.sp, 
+            fontWeight = fontWeight
+        )
     }
 }

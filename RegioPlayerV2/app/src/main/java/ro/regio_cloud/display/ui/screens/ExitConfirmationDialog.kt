@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -23,7 +24,8 @@ import ro.regio_cloud.display.ui.components.DialogButton // <-- MODIFICARE: Impo
 @Composable
 fun ExitConfirmationDialog(
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    rotationDegrees: Int = 0
 ) {
     var countdown by remember { mutableStateOf(10) }
     val noButtonFocusRequester = remember { FocusRequester() }
@@ -50,6 +52,7 @@ fun ExitConfirmationDialog(
             modifier = Modifier
                 .width(550.dp)
                 .background(Color(0xFF2E2E2E), shape = RoundedCornerShape(12.dp))
+                .rotate(rotationDegrees.toFloat())
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

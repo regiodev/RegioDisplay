@@ -84,30 +84,18 @@ def sync_client_playlist(
         client_items.append(client_item)
     # --- FINAL MODIFICARE ---
 
-    return schemas.ClientPlaylistResponse(
+    response_data = schemas.ClientPlaylistResponse(
         id=playlist.id, name=playlist.name, items=client_items,
         playlist_version=playlist.playlist_version, screen_name=screen.name,
         rotation=screen.rotation, rotation_updated_at=screen.rotation_updated_at
     )
+    
+    print(f"=== SYNC RESPONSE PENTRU {x_screen_key[:8]}... ===")
+    print(f"Screen rotation: {screen.rotation}°")
+    print(f"Rotation updated at: {screen.rotation_updated_at}")
+    print(f"Response rotation: {response_data.rotation}°")
+    print(f"Response timestamp: {response_data.rotation_updated_at}")
+    
+    return response_data
 
 
-@router.post("/report_rotation", status_code=status.HTTP_200_OK)
-def report_rotation_from_client(
-    payload: schemas.ClientRotationUpdate,
-    x_screen_key: str = Header(...),
-    db: Session = Depends(get_db)
-):
-    screen = db.query(models.Screen).filter(models.Screen.unique_key == x_screen_key).first()
-    if not screen or not screen.is_active:
-        raise HTTPException(status_code=404, detail="Screen not found or inactive")
-
-    if payload.timestamp > screen.rotation_updated_at:
-        if payload.rotation not in [0, 90, 180, 270]:
-             raise HTTPException(status_code=400, detail="Invalid rotation value.")
-        
-        screen.rotation = payload.rotation
-        screen.rotation_updated_at = payload.timestamp
-        db.commit()
-        return {"detail": "Rotation updated successfully."}
-
-    return {"detail": "Server has a newer or identical rotation value. No update performed."}

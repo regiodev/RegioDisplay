@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import ro.regio_cloud.display.network.ApiService
 import ro.regio_cloud.display.network.ClientPlaylistItem
 import ro.regio_cloud.display.network.ClientPlaylistResponse
-import ro.regio_cloud.display.network.ClientRotationUpdate
 import ro.regio_cloud.display.network.PlaybackLog
 import ro.regio_cloud.display.network.ScreenRegister
 import java.io.File
@@ -77,11 +76,47 @@ class PlaylistRepository(
                     // --- Logica de sincronizare rotație ---
                     val serverTimestamp = newPlaylist.rotationUpdatedAt
                     val localTimestamp = userPrefsRepo.rotationTimestampFlow.firstOrNull()
+                    val currentRotation = userPrefsRepo.rotationFlow.firstOrNull() ?: 0
+                    
+                    Log.d("RepoSync", "=== VERIFICARE ROTAȚIE ===")
+                    Log.d("RepoSync", "Rotație server: ${newPlaylist.rotation}°")
+                    Log.d("RepoSync", "Rotație locală: $currentRotation°")
+                    Log.d("RepoSync", "Timestamp server: $serverTimestamp")
+                    Log.d("RepoSync", "Timestamp local: $localTimestamp")
+                    
                     if (serverTimestamp != null && newPlaylist.rotation != null) {
-                        if (localTimestamp == null || serverTimestamp > localTimestamp) {
-                            userPrefsRepo.saveRotation(newPlaylist.rotation, serverTimestamp)
-                            Log.i("RepoSync", "Rotație actualizată de la server: ${newPlaylist.rotation}°")
+                        // SIMPLIFICARE: Verificăm dacă rotațiile sunt diferite
+                        val rotationChanged = newPlaylist.rotation != currentRotation
+                        
+                        val shouldUpdate = if (rotationChanged) {
+                            Log.d("RepoSync", "Rotația s-a schimbat ($currentRotation° -> ${newPlaylist.rotation}°)")
+                            true
+                        } else if (localTimestamp == null) {
+                            Log.d("RepoSync", "Local timestamp este null - se inițializează")
+                            true
+                        } else {
+                            try { 
+                                val serverInstant = java.time.Instant.parse(serverTimestamp)
+                                val localInstant = java.time.Instant.parse(localTimestamp)
+                                val isNewer = serverInstant > localInstant
+                                Log.d("RepoSync", "Server instant: $serverInstant")
+                                Log.d("RepoSync", "Local instant: $localInstant")
+                                Log.d("RepoSync", "Server mai nou? $isNewer")
+                                isNewer
+                            } catch (e: Exception) { 
+                                Log.w("RepoSync", "Eroare parsare timestamp: ${e.message}")
+                                true // În caz de eroare, actualizăm cu valoarea de pe server
+                            }
                         }
+                        
+                        if (shouldUpdate) {
+                            userPrefsRepo.saveRotation(newPlaylist.rotation, serverTimestamp)
+                            Log.i("RepoSync", "✅ Rotație actualizată de la server: ${newPlaylist.rotation}°")
+                        } else {
+                            Log.i("RepoSync", "❌ Nu se actualizează rotația - aceeași valoare și timestamp local mai nou")
+                        }
+                    } else {
+                        Log.w("RepoSync", "Server timestamp sau rotație este null - nu se actualizează")
                     }
 
                     if (newPlaylist.name.contains("Ecran Neactivat", ignoreCase = true)) {
@@ -109,17 +144,6 @@ class PlaylistRepository(
         }
     }
 
-    // --- FUNCȚIE NOUĂ ADĂUGATĂ ---
-    suspend fun reportRotationChange(rotation: Int, timestamp: String): Result<Unit> {
-        val uniqueKey = userPrefsRepo.uniqueKeyFlow.firstOrNull() ?: return Result.failure(Exception("Cheie unică lipsă."))
-        return try {
-            val payload = ClientRotationUpdate(rotation, timestamp)
-            val response = apiService.reportRotation(uniqueKey, payload)
-            if (response.isSuccessful) Result.success(Unit) else Result.failure(Exception("Server returned error: ${response.code()}"))
-        } catch (e: IOException) {
-            Result.failure(e)
-        }
-    }
 
     fun getLocalFileFor(item: ClientPlaylistItem): File? {
         val mediaId = item.url.substringAfterLast('/')

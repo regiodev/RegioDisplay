@@ -58,24 +58,6 @@ class PlayerViewModel(
         startStateMachine()
     }
 
-    // --- FUNCȚIE NOUĂ: Pentru a gestiona actualizările din UI ---
-    fun updateRotation(newRotation: Int) {
-        viewModelScope.launch {
-            val newTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now())
-            repository.userPrefsRepo.saveRotation(newRotation, newTimestamp)
-            Log.i("ViewModel", "Rotație salvată local: $newRotation. Se raportează la server...")
-
-            // Raportăm asincron către server
-            launch {
-                val result = repository.reportRotationChange(newRotation, newTimestamp)
-                if(result.isSuccess) {
-                    Log.i("ViewModel", "Raportarea rotației către server a reușit.")
-                } else {
-                    Log.w("ViewModel", "Raportarea rotației a eșuat: ${result.exceptionOrNull()?.message}")
-                }
-            }
-        }
-    }
 
     private fun startStateMachine() {
         stateManagementJob?.cancel()
@@ -131,8 +113,18 @@ class PlayerViewModel(
                     }
                 }
                 else -> {
-                    Log.e("ViewModel", "Eroare de sincronizare neașteptată: ${exception?.message}")
-                    _uiState.value = PlayerUiState.Error("Eroare necunoscută")
+                    Log.w("ViewModel", "Eroare de sincronizare temporară: ${exception?.message}")
+                    // În loc să setez Error imediat, încerc să rămân în starea curentă
+                    // și să las polling-ul sau alte mecanisme să reîncerce
+                    val currentState = _uiState.value
+                    if (currentState is PlayerUiState.NeedsActivation) {
+                        // Dacă eram în activare, rămân în activare - polling-ul va reîncerca
+                        Log.i("ViewModel", "Rămân în starea de activare pentru reîncercare")
+                    } else {
+                        // Doar în cazuri extreme setez Error
+                        Log.e("ViewModel", "Eroare persistentă de sincronizare, se setează Error")
+                        _uiState.value = PlayerUiState.Error("Eroare necunoscută")
+                    }
                 }
             }
         }
@@ -141,15 +133,17 @@ class PlayerViewModel(
     private fun startWebSocket(key: String) {
         webSocketClient?.stop()
         webSocketClient = WebSocketClient(viewModelScope) { message ->
-            Log.i("ViewModel", "NOTIFICARE WEBSOCKET PRIMITĂ: '$message'.")
+            Log.i("ViewModel", "🔔 NOTIFICARE WEBSOCKET PRIMITĂ: '$message'.")
             if (message.contains("playlist_updated") || message.contains("screen_deleted")) {
-                Log.i("ViewModel", "Mesaj relevant, se repornește mașina de stări.")
+                Log.i("ViewModel", "🔄 Mesaj relevant, se repornește mașina de stări pentru sincronizare.")
                 playbackJob?.cancel()
                 logEvent(activeItemForLogging, "END")
                 activeItemForLogging = null
                 _currentItem.value = null
                 stateManagementJob?.cancel()
                 startStateMachine()
+            } else {
+                Log.d("ViewModel", "Mesaj ignorat (nu este playlist_updated sau screen_deleted)")
             }
         }
         webSocketClient?.start(key, playerVersion, screenResolution)
@@ -173,19 +167,35 @@ class PlayerViewModel(
 
     private fun startPollingForActivation() {
         viewModelScope.launch {
-            while (isActive && _uiState.value is PlayerUiState.NeedsActivation) {
-                Log.d("ViewModel-Polling", "Se verifică starea de activare...")
+            var attempts = 0
+            val maxAttempts = 240 // 1 ora (240 * 15 secunde)
+            
+            while (isActive && _uiState.value is PlayerUiState.NeedsActivation && attempts < maxAttempts) {
+                Log.d("ViewModel-Polling", "Se verifică starea de activare... (încercarea ${attempts + 1})")
                 val syncResult = repository.syncRemotePlaylistAndCacheMedia()
+                
                 if (syncResult.isFailure && syncResult.exceptionOrNull() !is ScreenNotActivatedException) {
                     Log.w("ViewModel-Polling", "Polling oprit din cauza unei erori (ex: lipsă internet).")
                     break
                 }
+                
                 if (syncResult.isSuccess) {
-                    Log.d("ViewModel-Polling", "Activare detectată prin polling! Se repornește mașina de stări.")
-                    startStateMachine()
+                    Log.d("ViewModel-Polling", "✅ Activare detectată prin polling! Se repornește mașina de stări.")
+                    // În loc să apelez startStateMachine() direct, setez doar Success
+                    val playlist = syncResult.getOrNull()!!
+                    currentPlaylistId = playlist.id
+                    val localItems = mapPlaylistToLocalItems(playlist)
+                    _uiState.value = PlayerUiState.Success(localItems)
+                    startPlaybackLoop(localItems)
                     break
                 }
+                
+                attempts++
                 delay(15000)
+            }
+            
+            if (attempts >= maxAttempts) {
+                Log.w("ViewModel-Polling", "Polling timeout după $maxAttempts încercări")
             }
         }
     }

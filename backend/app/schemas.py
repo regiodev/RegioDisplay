@@ -198,6 +198,3 @@ class ResetPasswordSchema(BaseModel):
 class ScreenRotationUpdateWeb(BaseModel):
     rotation: conint(ge=0, le=270) # Validează ca rotația să fie 0, 90, 180 sau 270
 
-class ClientRotationUpdate(BaseModel):
-    rotation: conint(ge=0, le=270)
-    timestamp: datetime

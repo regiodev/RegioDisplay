@@ -38,6 +38,7 @@ fun PlayerScreen(
     // --- AICI ESTE MODIFICAREA ---
     onVideoSequenceEnded: (lastIndex: Int) -> Unit
 ) {
+    android.util.Log.d("PlayerScreen", "🔄 PlayerScreen recomposed - playlist.size=${playlist.size}, currentItem=${currentItem?.file?.name}, loopId=$loopId, rotation=$rotationDegrees")
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -76,9 +77,9 @@ private fun VideoPlayerWithEffects(
 ) {
     val context = LocalContext.current
     var playerView: PlayerView? by remember { mutableStateOf(null) }
+    var exoPlayer: ExoPlayer? by remember { mutableStateOf(null) }
 
-    // DisposableEffect gestionează ciclul de viață complet al player-ului.
-    // Se va re-executa de la zero (distrugând player-ul vechi) dacă oricare cheie se schimbă.
+    // DisposableEffect cu rotația inclusă - salvează și restaurează starea player-ului
     DisposableEffect(context, fullPlaylist, startVideoIndex, loopId, rotationDegrees) {
 
         val videoSublist = mutableListOf<LocalMediaItem>()
@@ -94,6 +95,22 @@ private fun VideoPlayerWithEffects(
             return@DisposableEffect onDispose {}
         }
 
+        // Salvăm starea player-ului vechi înainte să-l distrugem (pentru smooth transition)
+        val oldPlayer = exoPlayer
+        val currentPosition = oldPlayer?.currentPosition ?: 0L
+        val currentMediaItemIndex = oldPlayer?.currentMediaItemIndex ?: 0
+        val wasPlaying = oldPlayer?.isPlaying ?: true
+
+        if (oldPlayer != null) {
+            android.util.Log.d("PlayerScreen", "🔄 Recreând player pentru rotație $rotationDegrees°")
+            android.util.Log.d("PlayerScreen", "Stare salvată: pozitia=${currentPosition}ms, index=$currentMediaItemIndex, playing=$wasPlaying")
+            playerView?.player = null
+            oldPlayer.release()
+        } else {
+            android.util.Log.d("PlayerScreen", "🆕 Creând player nou pentru rotația $rotationDegrees°")
+        }
+
+        // Creăm player-ul cu rotația corectă
         val correctedRotation = when (rotationDegrees) {
             90 -> 270f
             270 -> 90f
@@ -104,19 +121,20 @@ private fun VideoPlayerWithEffects(
             .setRotationDegrees(correctedRotation)
             .build()
 
-        val exoPlayer = ExoPlayer.Builder(context).build().apply {
+        val newPlayer = ExoPlayer.Builder(context).build().apply {
             setVideoEffects(listOf(rotationEffect))
             repeatMode = Player.REPEAT_MODE_OFF
-            playWhenReady = true
+            playWhenReady = wasPlaying
         }
+        exoPlayer = newPlayer
 
         val mediaItems = videoSublist.map { MediaItem.fromUri(Uri.fromFile(it.file)) }
-        exoPlayer.setMediaItems(mediaItems, 0, 0)
+        newPlayer.setMediaItems(mediaItems, currentMediaItemIndex, currentPosition)
 
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    val lastPlayedMediaItemUri = exoPlayer.getMediaItemAt(exoPlayer.mediaItemCount - 1).localConfiguration?.uri.toString()
+                    val lastPlayedMediaItemUri = newPlayer.getMediaItemAt(newPlayer.mediaItemCount - 1).localConfiguration?.uri.toString()
                     val lastVideoInPlaylistIndex = fullPlaylist.indexOfFirst { Uri.fromFile(it.file).toString() == lastPlayedMediaItemUri }
                     if (lastVideoInPlaylistIndex != -1) {
                         onVideoSequenceEnded(lastVideoInPlaylistIndex)
@@ -124,21 +142,22 @@ private fun VideoPlayerWithEffects(
                 }
             }
         }
-        exoPlayer.addListener(listener)
-        exoPlayer.prepare()
+        newPlayer.addListener(listener)
+        newPlayer.prepare()
 
-        playerView?.player = exoPlayer
+        playerView?.player = newPlayer
 
-        // onDispose este blocul de curățare. Se execută când compozabilul dispare
-        // sau când una dintre cheile efectului (ex: rotationDegrees) se schimbă.
+        android.util.Log.d("PlayerScreen", "✅ Player recreat cu rotația $correctedRotation°")
+
         onDispose {
             playerView?.player = null
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
+            newPlayer.removeListener(listener)
+            newPlayer.release()
+            exoPlayer = null
         }
     }
 
-    // AndroidView va găzdui PlayerView-ul nostru.
+    // AndroidView fără rotația la nivel de UI (se aplică prin video effects)
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {

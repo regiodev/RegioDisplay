@@ -43,13 +43,4 @@ interface ApiService {
         @Body logs: List<PlaybackLog>
     ): Response<Unit>
 
-    /**
-     * --- FUNCȚIE NOUĂ ADĂUGATĂ ---
-     * Endpoint pentru a raporta o modificare a rotației de la player către server.
-     */
-    @POST("client/report_rotation")
-    suspend fun reportRotation(
-        @Header("X-Screen-Key") screenKey: String,
-        @Body payload: ClientRotationUpdate
-    ): Response<Unit>
 }

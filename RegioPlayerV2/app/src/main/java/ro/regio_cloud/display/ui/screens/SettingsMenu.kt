@@ -44,12 +44,10 @@ fun SettingsMenu(
     onLanguageSelected: (String) -> Unit,
     onClose: () -> Unit,
     onExitRequest: () -> Unit,
-    currentRotation: Int,
-    onRotationSelected: (Int) -> Unit
+    currentRotation: Int
 ) {
     val menuFocusRequester = remember { FocusRequester() }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var showRotationDialog by remember { mutableStateOf(false) }
 
     val languageDisplayValue = when (currentLanguageCode) {
         "ro" -> stringResource(R.string.settings_language_ro)
@@ -134,12 +132,6 @@ fun SettingsMenu(
                     modifier = Modifier.focusRequester(menuFocusRequester),
                     onClick = { showLanguageDialog = true }
                 )
-                ActionMenuItem(
-                    text = stringResource(R.string.settings_orientation),
-                    value = rotationDisplayValue,
-                    icon = Icons.Filled.ScreenRotation,
-                    onClick = { showRotationDialog = true }
-                )
                 ToggleMenuItem(
                     text = stringResource(R.string.settings_auto_relaunch),
                     icon = Icons.Filled.RestartAlt,
@@ -175,6 +167,7 @@ fun SettingsMenu(
                 val internetColor = if (isInternetConnected) Color(0xFF34C759) else Color(0xFFFF3B30)
                 InfoRow(label = stringResource(R.string.settings_internet_label), value = internetText, valueColor = internetColor)
                 InfoRow(label = stringResource(R.string.settings_activation_code), value = pairingCode ?: "-")
+                InfoRow(label = stringResource(R.string.settings_orientation), value = rotationDisplayValue)
             }
 
             Spacer(modifier = Modifier.weight(1f))
@@ -194,26 +187,18 @@ fun SettingsMenu(
                 onLanguageSelected(langCode)
                 showLanguageDialog = false
             },
-            onDismiss = { showLanguageDialog = false }
+            onDismiss = { showLanguageDialog = false },
+            rotationDegrees = currentRotation
         )
     }
 
-    if (showRotationDialog) {
-        RotationDialog(
-            currentRotation = currentRotation,
-            onRotationSelected = { newRotation ->
-                onRotationSelected(newRotation)
-                showRotationDialog = false
-            },
-            onDismiss = { showRotationDialog = false }
-        )
-    }
 }
 
 @Composable
 private fun LanguageSelectionDialog(
     onLanguageSelected: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    rotationDegrees: Int
 ) {
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
@@ -225,6 +210,7 @@ private fun LanguageSelectionDialog(
             modifier = Modifier
                 .width(400.dp)
                 .background(Color(0xFF2D2D2D), shape = RoundedCornerShape(12.dp))
+                .rotate(rotationDegrees.toFloat())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -257,8 +243,9 @@ private fun ActionMenuItem(
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val backgroundColor = if (isFocused) Color.White.copy(alpha = 0.9f) else Color.Transparent
+    val backgroundColor = if (isFocused) Color.White else Color.Transparent
     val contentColor = if (isFocused) Color.Black else Color.White
+    val fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium
 
     Row(
         modifier = modifier
@@ -271,7 +258,7 @@ private fun ActionMenuItem(
     ) {
         Icon(imageVector = icon, contentDescription = text, tint = contentColor)
         Spacer(modifier = Modifier.width(16.dp))
-        Text(text = text, color = contentColor, fontSize = 16.sp)
+        Text(text = text, color = contentColor, fontSize = 16.sp, fontWeight = fontWeight)
         Spacer(modifier = Modifier.weight(1f))
         if (value != null) {
             Text(text = value, color = if (isFocused) Color.DarkGray else Color.LightGray, fontSize = 16.sp)

@@ -9,6 +9,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -24,12 +25,14 @@ import ro.regio_cloud.display.R
 fun DownloadingScreen(
     progress: Int,
     filesDownloaded: Int,
-    totalFiles: Int
+    totalFiles: Int,
+    rotationDegrees: Int = 0
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .rotate(rotationDegrees.toFloat())
             .padding(vertical = 32.dp, horizontal = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center

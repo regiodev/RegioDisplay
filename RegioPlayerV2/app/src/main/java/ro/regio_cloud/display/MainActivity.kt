@@ -90,34 +90,38 @@ class MainActivity : AppCompatActivity() {
                 val scope = rememberCoroutineScope()
                 val currentLanguage by userPrefsRepo.languageFlow.collectAsState(initial = "ro")
 
+                // PlayerScreen în propriul Box pentru a nu se recompune cu meniul
+                val successState = uiState as? PlayerUiState.Success
+                if (successState != null) {
+                    val currentItem by playerViewModel.currentItem.collectAsState()
+                    val loopId by playerViewModel.playbackLoopId.collectAsState()
+                    PlayerScreen(
+                        playlist = successState.playlist,
+                        currentItem = currentItem,
+                        loopId = loopId,
+                        rotationDegrees = rotation,
+                        onVideoSequenceEnded = { lastIndex ->
+                            playerViewModel.onVideoSequenceEnded(lastIndex)
+                        }
+                    )
+                }
+
+                // Alte stări UI
+                when (val state = uiState) {
+                    is PlayerUiState.Loading -> PairingScreen(pairingCode = "...", rotationDegrees = rotation)
+                    is PlayerUiState.Downloading -> DownloadingScreen(
+                        progress = state.progress,
+                        filesDownloaded = state.filesDownloaded,
+                        totalFiles = state.totalFiles,
+                        rotationDegrees = rotation
+                    )
+                    is PlayerUiState.NeedsActivation -> PairingScreen(pairingCode = state.pairingCode, rotationDegrees = rotation)
+                    is PlayerUiState.Error -> PairingScreen(pairingCode = "EROARE", rotationDegrees = rotation)
+                    is PlayerUiState.Success -> { }
+                }
+
+                // Meniul în overlay separat
                 Box(modifier = Modifier.fillMaxSize()) {
-                    val successState = uiState as? PlayerUiState.Success
-                    if (successState != null) {
-                        val currentItem by playerViewModel.currentItem.collectAsState()
-                        val loopId by playerViewModel.playbackLoopId.collectAsState()
-                        PlayerScreen(
-                            playlist = successState.playlist,
-                            currentItem = currentItem,
-                            loopId = loopId,
-                            rotationDegrees = rotation,
-                            onVideoSequenceEnded = { lastIndex ->
-                                playerViewModel.onVideoSequenceEnded(lastIndex)
-                            }
-                        )
-                    }
-
-                    when (val state = uiState) {
-                        is PlayerUiState.Loading -> PairingScreen(pairingCode = "...", rotationDegrees = rotation)
-                        is PlayerUiState.Downloading -> DownloadingScreen(
-                            progress = state.progress,
-                            filesDownloaded = state.filesDownloaded,
-                            totalFiles = state.totalFiles
-                        )
-                        is PlayerUiState.NeedsActivation -> PairingScreen(pairingCode = state.pairingCode, rotationDegrees = rotation)
-                        is PlayerUiState.Error -> PairingScreen(pairingCode = "EROARE", rotationDegrees = rotation)
-                        is PlayerUiState.Success -> { }
-                    }
-
                     if (isMenuVisible) {
                         val pairingCode by userPrefsRepo.pairingCodeFlow.collectAsState(initial = null)
                         val screenName by userPrefsRepo.screenNameFlow.collectAsState(initial = null)
@@ -145,17 +149,15 @@ class MainActivity : AppCompatActivity() {
                                 isMenuVisible = false
                                 showExitDialog = true
                             },
-                            currentRotation = rotation,
-                            onRotationSelected = { newRotation ->
-                                playerViewModel.updateRotation(newRotation)
-                            }
+                            currentRotation = rotation
                         )
                     }
 
                     if (showExitDialog) {
                         ExitConfirmationDialog(
                             onConfirm = { finishAndRemoveTask() },
-                            onDismiss = { showExitDialog = false }
+                            onDismiss = { showExitDialog = false },
+                            rotationDegrees = rotation
                         )
                     }
                 }
@@ -206,7 +208,9 @@ class MainActivity : AppCompatActivity() {
             else -> false
         }
         if (openMenu) {
-            isMenuVisible = !isMenuVisible
+            val newMenuState = !isMenuVisible
+            android.util.Log.d("MainActivity", "🎛️ Schimbare meniu: $isMenuVisible -> $newMenuState")
+            isMenuVisible = newMenuState
             if (isMenuVisible) { showExitDialog = false }
             return true
         }
