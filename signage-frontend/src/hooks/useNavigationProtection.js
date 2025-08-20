@@ -1,27 +1,31 @@
 // Hook pentru protecția navigării cu modificări nesalvate
 // Integrează cu React Router pentru a preveni navigarea accidentală
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-// Pentru React Router v6 - API-ul useBlocker poate varia între versiuni
-// Încărcăm dinamic useBlocker cu fallback complet
-let useBlocker;
-try {
-  // eslint-disable-next-line no-undef
-  const router = require('react-router-dom');
-  useBlocker = router.useBlocker || router.unstable_useBlocker;
-} catch {
-  console.warn('React Router useBlocker not available, navigation protection disabled');
-}
+// Hook personalizat care simulează comportamentul useBlocker
+function useBlockerFallback(shouldBlock) {
+  const [blockedNavigation, setBlockedNavigation] = useState(null);
+  
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (typeof shouldBlock === 'function' ? shouldBlock({ currentLocation: window.location, nextLocation: null }) : shouldBlock) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
 
-// Fallback complet pentru când useBlocker nu este disponibil
-if (!useBlocker) {
-  useBlocker = () => ({
-    state: "unblocked",
-    proceed: () => {},
-    reset: () => {},
-    location: null
-  });
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [shouldBlock]);
+
+  return {
+    state: blockedNavigation ? "blocked" : "unblocked",
+    location: blockedNavigation,
+    proceed: () => setBlockedNavigation(null),
+    reset: () => setBlockedNavigation(null)
+  };
 }
 
 /**
@@ -35,7 +39,7 @@ export function useNavigationProtection(hasUnsavedChanges, onAttemptNavigation) 
   const navigationAttemptRef = useRef(null);
 
   // Blochează navigarea când există modificări nesalvate
-  const blocker = useBlocker(
+  const blocker = useBlockerFallback(
     ({ currentLocation, nextLocation }) => {
       // Nu bloca dacă nu sunt modificări nesalvate
       if (!hasUnsavedChanges) return false;

@@ -16,7 +16,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
@@ -1107,6 +1107,9 @@ function MediaPage() {
                     <Globe className="h-5 w-5 text-blue-500" />
                     Adaugă Pagină Web
                   </DialogTitle>
+                  <DialogDescription>
+                    Adaugă o pagină web ca sursă de conținut pentru afișare pe ecrane.
+                  </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleWebContentSubmit} className="space-y-4">
                   <div className="grid w-full gap-1.5">
@@ -1753,6 +1756,9 @@ function MediaPage() {
                 <Edit className="h-5 w-5 text-blue-500" />
                 Editează {editingFile?.type === 'web/html' ? 'Conținutul Web' : 'Fișierul'}
               </DialogTitle>
+              <DialogDescription>
+                Modifică proprietățile și setările pentru acest element media.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <div className="grid w-full gap-1.5">
