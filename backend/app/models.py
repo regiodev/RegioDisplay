@@ -50,6 +50,11 @@ class MediaFile(Base):
     uploaded_by_id = Column(Integer, ForeignKey("users.id"))
     uploader = relationship("User")
 
+    # --- CÂMPURI NOI PENTRU CONȚINUT WEB ---
+    web_url = Column(String, nullable=True)  # URL-ul paginii web (doar pentru type="web/html")
+    web_refresh_interval = Column(Integer, nullable=True, default=30)  # interval de refresh în secunde
+    # --- FINAL CÂMPURI NOI ---
+
     playlist_items = relationship("PlaylistItem", back_populates="media_file")
 
 class Playlist(Base):

@@ -102,6 +102,9 @@ dependencies {
     // Încărcare Imagini: Coil
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation(libs.appcompat)
+    
+    // --- DEPENDINȚĂ NOUĂ PENTRU WEBVIEW ---
+    implementation("androidx.webkit:webkit:1.7.0")
 
     // Testare
     testImplementation("junit:junit:4.13.2")

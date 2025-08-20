@@ -18,7 +18,9 @@ data class ClientPlaylistResponse(
 data class ClientPlaylistItem(
     @SerializedName("url") val url: String,
     @SerializedName("type") val type: String,
-    @SerializedName("duration") val duration: Int
+    @SerializedName("duration") val duration: Int,
+    // --- CÂMP NOU PENTRU CONȚINUT WEB ---
+    @SerializedName("web_refresh_interval") val webRefreshInterval: Int?
 )
 
 data class ScreenRegister(

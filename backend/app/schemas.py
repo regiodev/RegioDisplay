@@ -76,6 +76,10 @@ class MediaFilePublic(BaseModel):
     processing_eta: Optional[int] = None
     processing_speed: Optional[str] = None
     processing_started_at: Optional[datetime] = None
+    # --- CÂMPURI NOI PENTRU CONȚINUT WEB ---
+    web_url: Optional[str] = None
+    web_refresh_interval: Optional[int] = None
+    # --- FINAL CÂMPURI NOI ---
 
     class Config:
         from_attributes = True
@@ -154,6 +158,9 @@ class ClientPlaylistItem(BaseModel):
     url: str
     type: str
     duration: int
+    # --- CÂMP NOU PENTRU CONȚINUT WEB ---
+    web_refresh_interval: Optional[int] = None  # interval de refresh pentru conținut web
+    # --- FINAL CÂMP NOU ---
 
 class ClientPlaylistResponse(BaseModel):
     id: int
@@ -201,4 +208,29 @@ class ResetPasswordSchema(BaseModel):
 # --- SCHEME NOI ADĂUGATE ---
 class ScreenRotationUpdateWeb(BaseModel):
     rotation: conint(ge=0, le=270) # Validează ca rotația să fie 0, 90, 180 sau 270
+
+# --- SCHEME NOI PENTRU CONȚINUT WEB ---
+class WebContentCreate(BaseModel):
+    filename: str  # nume descriptiv pentru conținut (ex: "Pagina principală")
+    web_url: str  # URL-ul complet al paginii web
+    web_refresh_interval: Optional[int] = 30  # interval de refresh în secunde
+    tags: Optional[str] = None
+
+    class Config:
+        json_encoders = {
+            # Validare URL
+        }
+
+# --- SCHEMĂ PENTRU EDITAREA MEDIA ---
+class MediaFileUpdate(BaseModel):
+    filename: Optional[str] = None  # nume descriptiv nou
+    tags: Optional[str] = None  # tag-uri noi
+    # Pentru conținut web
+    web_url: Optional[str] = None  # URL nou (doar pentru web/html)
+    web_refresh_interval: Optional[int] = None  # interval nou de refresh
+    
+    class Config:
+        # Permite actualizări parțiale
+        validate_assignment = True
+# --- FINAL SCHEME NOI ---
 

@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -62,6 +63,8 @@ fun PlayerScreen(
                 )
             } else if (itemToDisplay.type.startsWith("image/")) {
                 ImagePlayer(item = itemToDisplay, rotationDegrees = rotationDegrees.toFloat())
+            } else if (itemToDisplay.type.startsWith("web/")) {
+                WebPlayer(item = itemToDisplay, rotationDegrees = rotationDegrees.toFloat())
             }
         }
     }
@@ -179,4 +182,95 @@ private fun ImagePlayer(item: LocalMediaItem, rotationDegrees: Float) {
         modifier = Modifier.fillMaxSize().rotate(rotationDegrees),
         contentScale = ContentScale.Fit
     )
+}
+
+@Composable
+private fun WebPlayer(item: LocalMediaItem, rotationDegrees: Float) {
+    val context = LocalContext.current
+    var webView: android.webkit.WebView? by remember { mutableStateOf(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    
+    // DisposableEffect pentru cleanup
+    DisposableEffect(context, item.url, rotationDegrees) {
+        onDispose {
+            webView?.destroy()
+        }
+    }
+    
+    // Periodic refresh pentru conținutul web
+    LaunchedEffect(item.url, item.webRefreshInterval) {
+        if (item.webRefreshInterval != null && item.webRefreshInterval > 0) {
+            while (true) {
+                delay((item.webRefreshInterval * 1000).toLong())
+                webView?.reload()
+            }
+        }
+    }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .rotate(rotationDegrees)
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                android.webkit.WebView(ctx).apply {
+                    // Configurări WebView
+                    settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        loadWithOverviewMode = true
+                        useWideViewPort = true
+                        setSupportZoom(false)
+                        builtInZoomControls = false
+                        displayZoomControls = false
+                        // Securitate
+                        allowFileAccess = false
+                        allowContentAccess = false
+                        allowFileAccessFromFileURLs = false
+                        allowUniversalAccessFromFileURLs = false
+                        // Performance
+                        cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                        setRenderPriority(android.webkit.WebSettings.RenderPriority.HIGH)
+                    }
+                    
+                    webViewClient = object : android.webkit.WebViewClient() {
+                        override fun onPageStarted(view: android.webkit.WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                            isLoading = true
+                        }
+                        
+                        override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                            isLoading = false
+                            android.util.Log.d("WebPlayer", "Page loaded successfully: $url")
+                        }
+                        
+                        override fun onReceivedError(view: android.webkit.WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                            isLoading = false
+                            android.util.Log.e("WebPlayer", "Error loading page: ${error?.description}")
+                        }
+                    }
+                    
+                    loadUrl(item.url)
+                    webView = this
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        
+        // Loading indicator
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = Color.White
+                )
+            }
+        }
+    }
 }

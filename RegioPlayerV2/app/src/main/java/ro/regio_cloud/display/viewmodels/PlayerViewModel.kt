@@ -246,6 +246,10 @@ class PlayerViewModel(
                     currentIndex = (currentIndex + 1) % playlist.size
                 } else if (item.type.startsWith("video/")) {
                     break
+                } else if (item.type.startsWith("web/")) {
+                    // Pentru conținut web, respectăm durata setată în playlist
+                    delay(item.duration * 1000L)
+                    currentIndex = (currentIndex + 1) % playlist.size
                 } else {
                     currentIndex = (currentIndex + 1) % playlist.size
                 }
@@ -266,8 +270,28 @@ class PlayerViewModel(
 
     private fun mapPlaylistToLocalItems(playlist: ClientPlaylistResponse): List<LocalMediaItem> {
         return playlist.items.mapNotNull { repoItem ->
-            repository.getLocalFileFor(repoItem)?.let { file ->
-                LocalMediaItem(file, repoItem.type, repoItem.duration, repoItem.url)
+            // Pentru conținut web, nu avem fișier local
+            if (repoItem.type == "web/html") {
+                LocalMediaItem(
+                    file = null,
+                    type = repoItem.type,
+                    duration = repoItem.duration,
+                    url = repoItem.url,
+                    webRefreshInterval = repoItem.webRefreshInterval,
+                    isWebContent = true
+                )
+            } else {
+                // Pentru conținut media tradițional (imagini/video)
+                repository.getLocalFileFor(repoItem)?.let { file ->
+                    LocalMediaItem(
+                        file = file,
+                        type = repoItem.type,
+                        duration = repoItem.duration,
+                        url = repoItem.url,
+                        webRefreshInterval = null,
+                        isWebContent = false
+                    )
+                }
             }
         }
     }

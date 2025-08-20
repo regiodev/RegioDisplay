@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axios';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesDialog from '../components/UnsavedChangesDialog';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,6 +56,32 @@ function EditScreenPage() {
   const [pairingCode, setPairingCode] = useState('');
   const [originalPairingCode, setOriginalPairingCode] = useState('');
 
+  // Initial data for unsaved changes detection
+  const [initialData, setInitialData] = useState({});
+
+  // Current form data for comparison
+  const currentData = useMemo(() => ({
+    name,
+    location,
+    selectedPlaylist,
+    rotation,
+    pairingCode
+  }), [name, location, selectedPlaylist, rotation, pairingCode]);
+
+  // Unsaved changes protection
+  const unsavedChanges = useUnsavedChanges(
+    initialData,
+    currentData,
+    async () => {
+      await handleSave();
+    },
+    {
+      ignoreFields: ['originalPairingCode'], // Ignoră câmpurile care nu afectează salvarea
+      enableBeforeUnload: true,
+      enableRouterProtection: true
+    }
+  );
+
   useEffect(() => {
     const fetchScreenDetails = async () => {
       try {
@@ -65,18 +93,30 @@ function EditScreenPage() {
         const screenResponse = await apiClient.get(`/screens/${id}`);
         const screenData = screenResponse.data;
         
-        setName(screenData.name || '');
-        setLocation(screenData.location || '');
-        setRotation(screenData.rotation || 0);
-        setOriginalPairingCode(screenData.pairing_code || '');
-        setPairingCode(screenData.pairing_code || '');
-        
-        // Setăm playlist-ul selectat după ce playlist-urile au fost încărcate
-        // Folosim assigned_playlist.id în loc de assigned_playlist_id
+        const nameValue = screenData.name || '';
+        const locationValue = screenData.location || '';
+        const rotationValue = screenData.rotation || 0;
+        const pairingCodeValue = screenData.pairing_code || '';
         const playlistValue = screenData.assigned_playlist?.id ? String(screenData.assigned_playlist.id) : 'null';
+
+        setName(nameValue);
+        setLocation(locationValue);
+        setRotation(rotationValue);
+        setOriginalPairingCode(pairingCodeValue);
+        setPairingCode(pairingCodeValue);
         setSelectedPlaylist(playlistValue);
 
-      } catch (error) {
+        // Setează datele inițiale pentru detectarea modificărilor
+        const initialFormData = {
+          name: nameValue,
+          location: locationValue,
+          selectedPlaylist: playlistValue,
+          rotation: rotationValue,
+          pairingCode: pairingCodeValue
+        };
+        setInitialData(initialFormData);
+
+      } catch {
         toast({ variant: 'destructive', title: 'Eroare', description: 'Nu s-au putut încărca detaliile ecranului.' });
       } finally {
         setLoading(false);
@@ -114,6 +154,9 @@ function EditScreenPage() {
 
       await apiClient.put(`/screens/${screenIdToUpdate}`, finalPayload);
       
+      // Actualizează datele inițiale după salvare cu succes
+      unsavedChanges.updateInitialData(currentData);
+      
       toast({ title: 'Succes!', description: 'Setările ecranului au fost salvate.' });
       navigate('/screens');
 
@@ -137,7 +180,7 @@ function EditScreenPage() {
             <Button 
               variant="ghost" 
               size="icon" 
-              onClick={() => navigate('/screens')}
+              onClick={() => unsavedChanges.attemptAction(() => navigate('/screens'), 'navigate')}
               className="hover:bg-muted"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -334,7 +377,7 @@ function EditScreenPage() {
         <div className="flex flex-col sm:flex-row justify-end items-center gap-4 pt-8 border-t bg-background/80 backdrop-blur-sm sticky bottom-0 py-4 -mx-4 px-4 md:-mx-8 md:px-8">
           <Button 
             variant="outline" 
-            onClick={() => navigate('/screens')} 
+            onClick={() => unsavedChanges.attemptAction(() => navigate('/screens'), 'navigate')} 
             disabled={saving}
             className="w-full sm:w-auto"
           >
@@ -360,6 +403,12 @@ function EditScreenPage() {
             )}
           </Button>
         </div>
+
+        {/* Unsaved Changes Dialog */}
+        <UnsavedChangesDialog
+          {...unsavedChanges.confirmDialogProps}
+          isSaving={saving}
+        />
       </div>
     </div>
   );

@@ -11,6 +11,8 @@ import multiprocessing
 import time
 import re
 import threading
+import validators
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List, Optional
@@ -1460,3 +1462,207 @@ async def reset_stuck_processing(current_user: models.User = Depends(auth.get_cu
         
     finally:
         db.close()
+
+
+# --- ENDPOINT NOU PENTRU CONȚINUT WEB ---
+@router.post("/web-content", response_model=schemas.MediaFilePublic, status_code=201)
+async def create_web_content(
+    payload: schemas.WebContentCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Creează un nou item de conținut web care poate fi adăugat în playlist-uri.
+    Acest conținut nu ocupă spațiu pe disc (size=0) și nu necesită procesare.
+    """
+    # Validează URL-ul
+    if not validators.url(payload.web_url):
+        raise HTTPException(status_code=400, detail="URL-ul furnizat nu este valid")
+    
+    # Parse URL pentru a extrage domeniul pentru filename implicit
+    parsed_url = urlparse(payload.web_url)
+    domain_name = parsed_url.netloc or "web-content"
+    
+    # Creează înregistrarea MediaFile pentru conținutul web
+    db_media_file = models.MediaFile(
+        filename=payload.filename,
+        path=f"web://{payload.web_url}",  # Path special pentru conținut web
+        thumbnail_path=None,  # Se va actualiza după generarea thumbnail-ului
+        type="web/html",  # Tip special pentru conținut web
+        size=0,  # Conținutul web nu ocupă spațiu local
+        duration=None,  # Durata va fi setată la nivel de playlist item
+        tags=payload.tags,
+        uploaded_by_id=current_user.id,
+        processing_status=models.ProcessingStatus.PROCESSING,  # În procesare pentru thumbnail
+        web_url=payload.web_url,
+        web_refresh_interval=payload.web_refresh_interval or 30
+    )
+    
+    db.add(db_media_file)
+    db.commit()
+    db.refresh(db_media_file)
+    
+    # Generează thumbnail-ul în background
+    asyncio.create_task(generate_web_thumbnail_task(db_media_file.id, payload.web_url))
+    
+    return db_media_file
+
+
+async def generate_web_thumbnail_task(media_file_id: int, url: str):
+    """
+    Task pentru generarea thumbnail-ului pentru conținut web în background
+    """
+    from ..services.web_thumbnail_service import get_web_thumbnail_service
+    
+    db = SessionLocal()
+    try:
+        # Găsește înregistrarea MediaFile
+        media_file = db.query(models.MediaFile).filter(models.MediaFile.id == media_file_id).first()
+        if not media_file:
+            print(f"MediaFile cu ID {media_file_id} nu a fost găsit")
+            return
+        
+        # Generează thumbnail-ul
+        thumbnail_service = get_web_thumbnail_service()
+        thumbnail_filename = await thumbnail_service.generate_thumbnail(url, width=400, height=300)
+        
+        if thumbnail_filename:
+            # Actualizează înregistrarea cu thumbnail-ul
+            media_file.thumbnail_path = thumbnail_filename
+            media_file.processing_status = models.ProcessingStatus.COMPLETED
+            print(f"Thumbnail generat cu succes pentru {url}: {thumbnail_filename}")
+        else:
+            # Marchează ca finalizat chiar dacă thumbnail-ul a eșuat
+            media_file.processing_status = models.ProcessingStatus.COMPLETED
+            print(f"Eșuare generare thumbnail pentru {url}")
+        
+        db.commit()
+        
+    except Exception as e:
+        print(f"Eroare la generarea thumbnail pentru {url}: {e}")
+        # Marchează ca finalizat chiar și în caz de eroare
+        try:
+            media_file = db.query(models.MediaFile).filter(models.MediaFile.id == media_file_id).first()
+            if media_file:
+                media_file.processing_status = models.ProcessingStatus.COMPLETED
+                db.commit()
+        except Exception as commit_error:
+            print(f"Eroare la actualizarea status după eșec thumbnail: {commit_error}")
+    finally:
+        db.close()
+
+
+@router.post("/web-content/{media_id}/regenerate-thumbnail")
+async def regenerate_web_thumbnail(
+    media_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Regenerează thumbnail-ul pentru un conținut web existent
+    """
+    # Găsește fișierul media
+    media_file = db.query(models.MediaFile).filter(
+        models.MediaFile.id == media_id,
+        models.MediaFile.type == "web/html"
+    ).first()
+    
+    if not media_file:
+        raise HTTPException(status_code=404, detail="Conținutul web nu a fost găsit")
+    
+    if not media_file.web_url:
+        raise HTTPException(status_code=400, detail="URL-ul web nu este disponibil")
+    
+    # Marchează ca în procesare
+    media_file.processing_status = models.ProcessingStatus.PROCESSING
+    db.commit()
+    
+    # Șterge thumbnail-ul vechi dacă există
+    if media_file.thumbnail_path:
+        from ..services.web_thumbnail_service import get_web_thumbnail_service
+        thumbnail_service = get_web_thumbnail_service()
+        await thumbnail_service.delete_thumbnail(media_file.thumbnail_path)
+        media_file.thumbnail_path = None
+        db.commit()
+    
+    # Generează thumbnail nou în background
+    asyncio.create_task(generate_web_thumbnail_task(media_file.id, media_file.web_url))
+    
+    return {"message": "Regenerarea thumbnail-ului a început", "media_id": media_id}
+
+
+@router.put("/{media_id}", response_model=schemas.MediaFilePublic)
+async def update_media_file(
+    media_id: int,
+    payload: schemas.MediaFileUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Actualizează informațiile unui fișier media existent (nume, tag-uri, URL web, etc.)
+    """
+    # Găsește fișierul media
+    media_file = db.query(models.MediaFile).filter(models.MediaFile.id == media_id).first()
+    
+    if not media_file:
+        raise HTTPException(status_code=404, detail="Fișierul media nu a fost găsit")
+    
+    # Verifică permisiunile (doar proprietarul sau admin)
+    if media_file.uploaded_by_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Nu aveți permisiuni pentru a edita acest fișier")
+    
+    # Actualizează câmpurile generale
+    if payload.filename is not None:
+        media_file.filename = payload.filename
+    
+    if payload.tags is not None:
+        media_file.tags = payload.tags
+    
+    # Actualizări specifice pentru conținut web
+    if media_file.type == "web/html":
+        regenerate_thumbnail = False
+        
+        if payload.web_url is not None:
+            # Validează noul URL
+            if not validators.url(payload.web_url):
+                raise HTTPException(status_code=400, detail="URL-ul furnizat nu este valid")
+            
+            # Dacă URL-ul se schimbă, regenerează thumbnail-ul
+            if media_file.web_url != payload.web_url:
+                media_file.web_url = payload.web_url
+                media_file.path = f"web://{payload.web_url}"  # Actualizează și path-ul
+                regenerate_thumbnail = True
+        
+        if payload.web_refresh_interval is not None:
+            if not (5 <= payload.web_refresh_interval <= 3600):
+                raise HTTPException(status_code=400, detail="Intervalul de refresh trebuie să fie între 5 și 3600 secunde")
+            media_file.web_refresh_interval = payload.web_refresh_interval
+        
+        # Regenerează thumbnail-ul dacă URL-ul s-a schimbat
+        if regenerate_thumbnail:
+            # Șterge thumbnail-ul vechi dacă există
+            if media_file.thumbnail_path:
+                from ..services.web_thumbnail_service import get_web_thumbnail_service
+                thumbnail_service = get_web_thumbnail_service()
+                await thumbnail_service.delete_thumbnail(media_file.thumbnail_path)
+                media_file.thumbnail_path = None
+            
+            # Marchează ca în procesare și generează noul thumbnail
+            media_file.processing_status = models.ProcessingStatus.PROCESSING
+            db.commit()
+            db.refresh(media_file)
+            
+            # Generează thumbnail nou în background
+            asyncio.create_task(generate_web_thumbnail_task(media_file.id, media_file.web_url))
+            
+            return media_file
+    
+    else:
+        # Pentru fișiere non-web, verifică că nu se încearcă să se seteze proprietăți web
+        if payload.web_url is not None or payload.web_refresh_interval is not None:
+            raise HTTPException(status_code=400, detail="Proprietățile web pot fi setate doar pentru conținutul web")
+    
+    db.commit()
+    db.refresh(media_file)
+    
+    return media_file

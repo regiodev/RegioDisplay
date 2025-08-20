@@ -79,8 +79,22 @@ def sync_client_playlist(
     client_items = []
     for item in sorted(playlist.items, key=lambda x: x.order):
         media_file = item.media_file
-        media_url = f"https://display.regio-cloud.ro/api/media/serve/{media_file.id}"
-        client_item = schemas.ClientPlaylistItem(url=media_url, type=media_file.type, duration=item.duration)
+        
+        # Pentru conținutul web, folosim direct URL-ul web
+        if media_file.type == "web/html" and media_file.web_url:
+            media_url = media_file.web_url
+            refresh_interval = media_file.web_refresh_interval
+        else:
+            # Pentru conținut media tradițional (imagini/video)
+            media_url = f"https://display.regio-cloud.ro/api/media/serve/{media_file.id}"
+            refresh_interval = None
+        
+        client_item = schemas.ClientPlaylistItem(
+            url=media_url, 
+            type=media_file.type, 
+            duration=item.duration,
+            web_refresh_interval=refresh_interval
+        )
         client_items.append(client_item)
     # --- FINAL MODIFICARE ---
 

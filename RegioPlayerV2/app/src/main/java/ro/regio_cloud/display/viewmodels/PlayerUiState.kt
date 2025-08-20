@@ -16,8 +16,11 @@ sealed interface PlayerUiState {
 }
 
 data class LocalMediaItem(
-    val file: File,
+    val file: File?,  // Nullable pentru conținut web
     val type: String,
     val duration: Int,
-    val url: String
+    val url: String,
+    // --- CÂMPURI NOI PENTRU CONȚINUT WEB ---
+    val webRefreshInterval: Int? = null,
+    val isWebContent: Boolean = false
 )

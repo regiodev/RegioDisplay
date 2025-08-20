@@ -16,6 +16,9 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
@@ -33,11 +36,22 @@ import {
   Search,
   Settings,
   Database,
+  Link,
+  Globe,
+  Plus,
+  Filter,
+  Image,
+  Video,
+  Edit,
+  Save,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiClient from '../api/axios';
 import { useAuth } from '../contexts/AuthContext';
 import VideoProcessingProgress from '../components/VideoProcessingProgress';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesDialog from '../components/UnsavedChangesDialog';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -185,8 +199,15 @@ const MediaPreview = ({ file }) => {
         />
       ) : (
         <div className="flex flex-col items-center justify-center h-full bg-muted text-muted-foreground">
-          <File className="w-10 h-10" />
+          {file.type === 'web/html' ? (
+            <Globe className="w-10 h-10 text-blue-500" />
+          ) : (
+            <File className="w-10 h-10" />
+          )}
           <span className="mt-2 text-xs text-center px-1">{file.filename}</span>
+          {file.type === 'web/html' && (
+            <span className="text-xs text-blue-500 font-medium">WEB</span>
+          )}
         </div>
       )}
     </div>
@@ -210,10 +231,106 @@ function MediaPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
+  const [fileTypeFilter, setFileTypeFilter] = useState('all'); // nou pentru filtru
 
   // --- STĂRI NOI PENTRU UPLOAD ---
   const [stagedFiles, setStagedFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+
+
+  // --- STĂRI NOI PENTRU CONȚINUT WEB ---
+  const [isWebModalOpen, setIsWebModalOpen] = useState(false);
+  const [webFormData, setWebFormData] = useState({
+    filename: '',
+    web_url: '',
+    web_refresh_interval: 30,
+    tags: ''
+  });
+  const [webInitialData, setWebInitialData] = useState({});
+  const [isWebLoading, setIsWebLoading] = useState(false);
+
+  // Hook pentru detectarea modificărilor nesalvate în modalul pentru conținut web
+  const webUnsavedChanges = useUnsavedChanges(
+    webInitialData,
+    webFormData,
+    async () => {
+      await handleWebContentSubmitInternal();
+    },
+    {
+      ignoreFields: [],
+      enableBeforeUnload: false, // Dezactivăm - va fi gestionată global
+      enableRouterProtection: false // Dezactivăm - va fi gestionată global
+    }
+  );
+
+  // --- STĂRI PENTRU EDITARE ---
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingFile, setEditingFile] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    filename: '',
+    tags: '',
+    web_url: '',
+    web_refresh_interval: 30
+  });
+  const [editInitialData, setEditInitialData] = useState({});
+  const [isEditLoading, setIsEditLoading] = useState(false);
+
+  // Hook pentru detectarea modificărilor nesalvate în modalul de editare
+  const editUnsavedChanges = useUnsavedChanges(
+    editInitialData,
+    editFormData,
+    async () => {
+      // Funcția de salvare va fi apelată din hook
+      await handleEditSubmitInternal();
+    },
+    {
+      // Ignorăm ID-ul și alte câmpuri care nu afectează conținutul
+      ignoreFields: ['id', 'uploaded_at', 'processing_status'],
+      enableBeforeUnload: false, // Dezactivăm - va fi gestionată global
+      enableRouterProtection: false // Dezactivăm - va fi gestionată global
+    }
+  );
+
+  // --- PROTECȚIE GLOBALĂ PENTRU MODIFICĂRILE NESALVATE ---
+  // Calculează dacă există modificări nesalvate oriunde în pagină
+  const hasGlobalUnsavedChanges = useMemo(() => {
+    // Verifică dacă sunt fișiere staged pentru upload
+    const hasStagedFiles = stagedFiles.length > 0;
+    // Verifică modificările în modaluri (când sunt deschise)
+    const hasWebChanges = isWebModalOpen && webUnsavedChanges?.hasUnsavedChanges;
+    const hasEditChanges = isEditModalOpen && editUnsavedChanges?.hasUnsavedChanges;
+    
+    return hasStagedFiles || hasWebChanges || hasEditChanges;
+  }, [stagedFiles.length, isWebModalOpen, webUnsavedChanges?.hasUnsavedChanges, isEditModalOpen, editUnsavedChanges?.hasUnsavedChanges]);
+
+  // Hook global pentru protecția navigării și refresh-ului
+  const globalUnsavedChanges = useUnsavedChanges(
+    {}, // Nu avem date inițiale la nivel global
+    {}, // Nu avem date curente la nivel global
+    async () => {
+      // Funcția de salvare globală - gestionează diferite scenarii
+      if (stagedFiles.length > 0) {
+        // Dacă sunt fișiere staged, întreabă utilizatorul ce să facă
+        const shouldUpload = window.confirm(
+          `Aveți ${stagedFiles.length} fișiere pregătite pentru încărcare. Doriți să le încărcați înainte de plecare?`
+        );
+        if (shouldUpload) {
+          await handleUpload();
+        } else {
+          // Curăță fișierele staged
+          setStagedFiles([]);
+        }
+      }
+      
+      // Pentru modificările în modaluri, acestea vor fi gestionate de hook-urile respective
+      return Promise.resolve();
+    },
+    {
+      ignoreFields: [],
+      enableBeforeUnload: hasGlobalUnsavedChanges,
+      enableRouterProtection: hasGlobalUnsavedChanges
+    }
+  );
 
   // --- Calcul spațiu ---
   const totalStagedSizeBytes = useMemo(
@@ -290,7 +407,7 @@ function MediaPage() {
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
-      setSelectedFiles(mediaFiles.map((file) => file.id));
+      setSelectedFiles(filteredMediaFiles.map((file) => file.id));
     } else {
       setSelectedFiles([]);
     }
@@ -436,7 +553,7 @@ function MediaPage() {
           fetchMediaFiles();
         }, 3000);
       }
-    } catch (error) {
+    } catch {
       toast({
         variant: 'destructive',
         title: 'Eroare',
@@ -703,9 +820,250 @@ function MediaPage() {
     }, 2000);
   };
 
+  // --- FUNCȚII PENTRU CONȚINUT WEB ---
+  const handleWebContentSubmitInternal = async () => {
+    setIsWebLoading(true);
+
+    try {
+      await apiClient.post('/media/web-content', webFormData);
+      
+      toast({
+        title: 'Conținut web adăugat',
+        description: `"${webFormData.filename}" a fost adăugat cu succes în bibliotecă.`,
+      });
+
+      // Reset form și închide modal
+      const resetData = {
+        filename: '',
+        web_url: '',
+        web_refresh_interval: 30,
+        tags: ''
+      };
+      setWebFormData(resetData);
+      webUnsavedChanges.updateInitialData(resetData);
+      
+      setIsWebModalOpen(false);
+      fetchMediaFiles();
+      
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Eroare',
+        description: error.response?.data?.detail || 'Nu s-a putut adăuga conținutul web.',
+      });
+      throw error;
+    } finally {
+      setIsWebLoading(false);
+    }
+  };
+
+  const handleWebContentSubmit = async (e) => {
+    e.preventDefault();
+    await handleWebContentSubmitInternal();
+  };
+
+  const handleWebModalClose = () => {
+    if (!webUnsavedChanges.hasUnsavedChanges) {
+      // Nu sunt modificări, închide direct
+      const resetData = {
+        filename: '',
+        web_url: '',
+        web_refresh_interval: 30,
+        tags: ''
+      };
+      setWebFormData(resetData);
+      setWebInitialData(resetData);
+      setIsWebModalOpen(false);
+      return;
+    }
+
+    // Sunt modificări nesalvate, afișează dialogul
+    webUnsavedChanges.attemptAction(() => {
+      const resetData = {
+        filename: '',
+        web_url: '',
+        web_refresh_interval: 30,
+        tags: ''
+      };
+      setWebFormData(resetData);
+      setWebInitialData(resetData);
+      setIsWebModalOpen(false);
+    }, 'close');
+  };
+
+  // Inițializez datele pentru modalul web când se deschide
+  const handleWebModalOpen = () => {
+    const initialData = {
+      filename: '',
+      web_url: '',
+      web_refresh_interval: 30,
+      tags: ''
+    };
+    setWebFormData(initialData);
+    setWebInitialData(initialData);
+    setIsWebModalOpen(true);
+  };
+
+  const handleWebFormChange = (field, value) => {
+    setWebFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // --- FUNCȚII PENTRU EDITARE ---
+  const handleEditClick = (file) => {
+    const initialData = {
+      filename: file.filename || '',
+      tags: file.tags || '',
+      web_url: file.web_url || '',
+      web_refresh_interval: file.web_refresh_interval || 30
+    };
+    
+    setEditingFile(file);
+    setEditFormData(initialData);
+    setEditInitialData(initialData);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditFormChange = (field, value) => {
+    setEditFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Funcția internă pentru salvare (apelată de hook și din form)
+  const handleEditSubmitInternal = async () => {
+    if (!editingFile) return;
+
+    setIsEditLoading(true);
+
+    try {
+      // Construiește payload-ul doar cu câmpurile modificate
+      const payload = {};
+      
+      if (editFormData.filename !== editingFile.filename) {
+        payload.filename = editFormData.filename;
+      }
+      
+      if (editFormData.tags !== (editingFile.tags || '')) {
+        payload.tags = editFormData.tags;
+      }
+
+      // Pentru conținut web
+      if (editingFile.type === 'web/html') {
+        if (editFormData.web_url !== editingFile.web_url) {
+          payload.web_url = editFormData.web_url;
+        }
+        if (editFormData.web_refresh_interval !== editingFile.web_refresh_interval) {
+          payload.web_refresh_interval = editFormData.web_refresh_interval;
+        }
+      }
+
+      // Dacă nu s-a schimbat nimic, închide direct
+      if (Object.keys(payload).length === 0) {
+        setIsEditModalOpen(false);
+        return;
+      }
+
+      await apiClient.put(`/media/${editingFile.id}`, payload);
+      
+      toast({
+        title: 'Fișier actualizat',
+        description: `"${editFormData.filename}" a fost actualizat cu succes.`,
+      });
+
+      // Actualizează datele inițiale după salvare cu succes
+      editUnsavedChanges.updateInitialData(editFormData);
+      setIsEditModalOpen(false);
+      fetchMediaFiles();
+      
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Eroare',
+        description: error.response?.data?.detail || 'Nu s-a putut actualiza fișierul.',
+      });
+      throw error; // Re-throw pentru a permite hook-ului să gestioneze eroarea
+    } finally {
+      setIsEditLoading(false);
+    }
+  };
+
+  // Funcția pentru submit din form
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    await handleEditSubmitInternal();
+  };
+
+  // Funcția pentru închiderea modalului cu verificarea modificărilor nesalvate
+  const handleEditModalClose = () => {
+    if (!editUnsavedChanges.hasUnsavedChanges) {
+      // Nu sunt modificări, închide direct
+      setIsEditModalOpen(false);
+      setEditingFile(null);
+      setEditFormData({
+        filename: '',
+        tags: '',
+        web_url: '',
+        web_refresh_interval: 30
+      });
+      setEditInitialData({});
+      return;
+    }
+
+    // Sunt modificări nesalvate, afișează dialogul
+    editUnsavedChanges.attemptAction(() => {
+      setIsEditModalOpen(false);
+      setEditingFile(null);
+      setEditFormData({
+        filename: '',
+        tags: '',
+        web_url: '',
+        web_refresh_interval: 30
+      });
+      setEditInitialData({});
+    }, 'close');
+  };
+
+  // --- FILTRARE ȘI STATISTICI TIPURI FIȘIERE ---
+  const filteredMediaFiles = useMemo(() => {
+    if (fileTypeFilter === 'all') return mediaFiles;
+    
+    return mediaFiles.filter(file => {
+      switch (fileTypeFilter) {
+        case 'images':
+          return file.type.startsWith('image/');
+        case 'videos':
+          return file.type.startsWith('video/');
+        case 'web':
+          return file.type === 'web/html';
+        case 'audio':
+          return file.type.startsWith('audio/');
+        default:
+          return true;
+      }
+    });
+  }, [mediaFiles, fileTypeFilter]);
+
+  const fileTypeStats = useMemo(() => {
+    const stats = mediaFiles.reduce((acc, file) => {
+      if (file.type.startsWith('image/')) acc.images++;
+      else if (file.type.startsWith('video/')) acc.videos++;
+      else if (file.type === 'web/html') acc.web++;
+      else if (file.type.startsWith('audio/')) acc.audio++;
+      else acc.other++;
+      return acc;
+    }, { images: 0, videos: 0, web: 0, audio: 0, other: 0 });
+    
+    stats.total = mediaFiles.length;
+    return stats;
+  }, [mediaFiles]);
+
   const isAllSelected = useMemo(
-    () => mediaFiles.length > 0 && selectedFiles.length === mediaFiles.length,
-    [mediaFiles, selectedFiles],
+    () => filteredMediaFiles.length > 0 && selectedFiles.length === filteredMediaFiles.length,
+    [filteredMediaFiles, selectedFiles],
   );
 
   const storagePercentage = user ? (user.current_usage_mb / user.disk_quota_mb) * 100 : 0;
@@ -727,12 +1085,112 @@ function MediaPage() {
             </div>
           </div>
           
-          {/* Status indicator */}
+          {/* Actions and Status */}
           <div className="flex items-center gap-4">
+            {/* Web Content Button */}
+            <Dialog open={isWebModalOpen} onOpenChange={(open) => {
+              if (open) {
+                handleWebModalOpen();
+              } else {
+                handleWebModalClose();
+              }
+            }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Globe className="h-4 w-4 mr-2" />
+                  Pagină Web
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Globe className="h-5 w-5 text-blue-500" />
+                    Adaugă Pagină Web
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleWebContentSubmit} className="space-y-4">
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="filename">Nume descriptiv</Label>
+                    <Input
+                      id="filename"
+                      placeholder="ex: Pagina principală"
+                      value={webFormData.filename}
+                      onChange={(e) => handleWebFormChange('filename', e.target.value)}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="web_url">URL pagină web</Label>
+                    <Input
+                      id="web_url"
+                      type="url"
+                      placeholder="https://example.com"
+                      value={webFormData.web_url}
+                      onChange={(e) => handleWebFormChange('web_url', e.target.value)}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="refresh_interval">Interval refresh (secunde)</Label>
+                    <Input
+                      id="refresh_interval"
+                      type="number"
+                      min="5"
+                      max="3600"
+                      value={webFormData.web_refresh_interval}
+                      onChange={(e) => handleWebFormChange('web_refresh_interval', parseInt(e.target.value) || 30)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Pagina se va actualiza automat la fiecare {webFormData.web_refresh_interval} secunde
+                    </p>
+                  </div>
+                  
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="tags">Tag-uri (opțional)</Label>
+                    <Input
+                      id="tags"
+                      placeholder="ex: știri, anunțuri"
+                      value={webFormData.tags}
+                      onChange={(e) => handleWebFormChange('tags', e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleWebModalClose}
+                      disabled={isWebLoading}
+                    >
+                      Anulează
+                    </Button>
+                    <Button type="submit" disabled={isWebLoading}>
+                      {isWebLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Se adaugă...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="mr-2 h-4 w-4" />
+                          Adaugă
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+            
             <div className="flex items-center space-x-2 px-3 py-2 bg-muted/50 rounded-lg">
               <Database className="h-4 w-4 text-blue-500" />
               <span className="text-sm font-medium">
-                {mediaFiles.length} fișier{mediaFiles.length !== 1 ? 'e' : ''}
+                {fileTypeFilter === 'all' 
+                  ? `${mediaFiles.length} fișier${mediaFiles.length !== 1 ? 'e' : ''}`
+                  : `${filteredMediaFiles.length}/${mediaFiles.length} fișier${filteredMediaFiles.length !== 1 ? 'e' : ''}`
+                }
               </span>
             </div>
           </div>
@@ -946,6 +1404,50 @@ function MediaPage() {
                     Selectați fișiere pentru acțiuni în masă
                   </div>
                 )}
+                
+                {/* File Type Filter */}
+                <div className="flex items-center gap-2 ml-4">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <Select value={fileTypeFilter} onValueChange={setFileTypeFilter}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Toate tipurile" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        <div className="flex items-center gap-2">
+                          <Database className="h-4 w-4" />
+                          Toate ({fileTypeStats.total})
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="images">
+                        <div className="flex items-center gap-2">
+                          <Image className="h-4 w-4 text-green-500" />
+                          Imagini ({fileTypeStats.images})
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="videos">
+                        <div className="flex items-center gap-2">
+                          <Video className="h-4 w-4 text-red-500" />
+                          Video ({fileTypeStats.videos})
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="web">
+                        <div className="flex items-center gap-2">
+                          <Globe className="h-4 w-4 text-blue-500" />
+                          Web ({fileTypeStats.web})
+                        </div>
+                      </SelectItem>
+                      {fileTypeStats.audio > 0 && (
+                        <SelectItem value="audio">
+                          <div className="flex items-center gap-2">
+                            <File className="h-4 w-4 text-yellow-500" />
+                            Audio ({fileTypeStats.audio})
+                          </div>
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               {/* Search și view controls */}
@@ -1008,7 +1510,7 @@ function MediaPage() {
           <>
             {viewMode === 'grid' ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
-                {mediaFiles.map((file) => (
+                {filteredMediaFiles.map((file) => (
                   <Card key={file.id} className="overflow-hidden relative group shadow-sm hover:shadow-md transition-shadow duration-200">
                     <CardContent className="p-0">
                       <div className="absolute top-3 left-3 z-10">
@@ -1019,7 +1521,15 @@ function MediaPage() {
                           />
                         </div>
                       </div>
-                      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 shadow-lg bg-white/90 dark:bg-gray-900/90"
+                          onClick={() => handleEditClick(file)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="destructive"
                           size="icon"
@@ -1087,7 +1597,7 @@ function MediaPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {mediaFiles.map((file) => (
+                      {filteredMediaFiles.map((file) => (
                         <tr key={file.id} className="hover:bg-muted/30 transition-colors">
                           <td className="px-6 py-4">
                             <Checkbox
@@ -1097,10 +1607,24 @@ function MediaPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center space-x-3">
-                              <div className="p-1 bg-blue-100 dark:bg-blue-900/30 rounded">
-                                <File className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                              <div className={cn(
+                                "p-1 rounded",
+                                file.type === 'web/html' 
+                                  ? "bg-blue-100 dark:bg-blue-900/30" 
+                                  : "bg-gray-100 dark:bg-gray-900/30"
+                              )}>
+                                {file.type === 'web/html' ? (
+                                  <Globe className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                                ) : (
+                                  <File className="h-3 w-3 text-gray-600 dark:text-gray-400" />
+                                )}
                               </div>
-                              <span className="font-medium">{file.filename}</span>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{file.filename}</span>
+                                {file.type === 'web/html' && (
+                                  <span className="text-xs text-blue-500">Conținut Web</span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-6 py-4">
@@ -1129,14 +1653,24 @@ function MediaPage() {
                             )}
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              onClick={() => handleDeleteClick(file)}
-                              className="h-8 w-8 hover:bg-red-100 dark:hover:bg-red-900/30"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+                            <div className="flex justify-end gap-2">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleEditClick(file)}
+                                className="h-8 w-8 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                              >
+                                <Edit className="h-4 w-4 text-blue-500" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleDeleteClick(file)}
+                                className="h-8 w-8 hover:bg-red-100 dark:hover:bg-red-900/30"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1145,7 +1679,7 @@ function MediaPage() {
                 </div>
               </Card>
             )}
-            {mediaFiles.length === 0 && !loading && (
+            {filteredMediaFiles.length === 0 && !loading && (
               <Card className="shadow-sm">
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <div className="p-4 bg-muted/50 rounded-full mb-4">
@@ -1155,9 +1689,20 @@ function MediaPage() {
                   <p className="text-muted-foreground text-center">
                     {searchTerm 
                       ? 'Niciun fișier nu corespunde criteriilor de căutare.' 
-                      : 'Nu aveți încă fișiere media. Începeți prin a încărca primul fișier.'
+                      : fileTypeFilter !== 'all'
+                        ? 'Nu există fișiere pentru tipul selectat. Încercați alt filtru.'
+                        : 'Nu aveți încă fișiere media. Începeți prin a încărca primul fișier.'
                     }
                   </p>
+                  {(fileTypeFilter !== 'all' && !searchTerm) && (
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setFileTypeFilter('all')} 
+                      className="mt-4"
+                    >
+                      Afișați toate fișierele
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -1193,6 +1738,123 @@ function MediaPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Edit Modal */}
+        <Dialog open={isEditModalOpen} onOpenChange={(open) => {
+          if (!open) {
+            handleEditModalClose();
+          } else {
+            setIsEditModalOpen(true);
+          }
+        }}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Edit className="h-5 w-5 text-blue-500" />
+                Editează {editingFile?.type === 'web/html' ? 'Conținutul Web' : 'Fișierul'}
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="grid w-full gap-1.5">
+                <Label htmlFor="edit-filename">Nume</Label>
+                <Input
+                  id="edit-filename"
+                  placeholder="Nume descriptiv"
+                  value={editFormData.filename}
+                  onChange={(e) => handleEditFormChange('filename', e.target.value)}
+                  required
+                />
+              </div>
+              
+              <div className="grid w-full gap-1.5">
+                <Label htmlFor="edit-tags">Tag-uri</Label>
+                <Input
+                  id="edit-tags"
+                  placeholder="ex: știri, anunțuri (opțional)"
+                  value={editFormData.tags}
+                  onChange={(e) => handleEditFormChange('tags', e.target.value)}
+                />
+              </div>
+
+              {/* Câmpuri specifice pentru conținut web */}
+              {editingFile?.type === 'web/html' && (
+                <>
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="edit-web-url">URL pagină web</Label>
+                    <Input
+                      id="edit-web-url"
+                      type="url"
+                      placeholder="https://example.com"
+                      value={editFormData.web_url}
+                      onChange={(e) => handleEditFormChange('web_url', e.target.value)}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Modificarea URL-ului va regenera automat thumbnail-ul
+                    </p>
+                  </div>
+                  
+                  <div className="grid w-full gap-1.5">
+                    <Label htmlFor="edit-refresh-interval">Interval refresh (secunde)</Label>
+                    <Input
+                      id="edit-refresh-interval"
+                      type="number"
+                      min="5"
+                      max="3600"
+                      value={editFormData.web_refresh_interval}
+                      onChange={(e) => handleEditFormChange('web_refresh_interval', parseInt(e.target.value) || 30)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Pagina se va actualiza automat la fiecare {editFormData.web_refresh_interval} secunde
+                    </p>
+                  </div>
+                </>
+              )}
+              
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleEditModalClose}
+                  disabled={isEditLoading}
+                >
+                  Anulează
+                </Button>
+                <Button type="submit" disabled={isEditLoading}>
+                  {isEditLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Se salvează...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Salvează
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Unsaved Changes Dialog pentru modalul de editare */}
+        <UnsavedChangesDialog
+          {...editUnsavedChanges.confirmDialogProps}
+          isSaving={isEditLoading}
+        />
+
+        {/* Unsaved Changes Dialog pentru modalul de conținut web */}
+        <UnsavedChangesDialog
+          {...webUnsavedChanges.confirmDialogProps}
+          isSaving={isWebLoading}
+        />
+
+        {/* Global Unsaved Changes Dialog */}
+        <UnsavedChangesDialog
+          {...globalUnsavedChanges.confirmDialogProps}
+          customMessage="Aveți modificări nesalvate în pagină (fișiere staged sau formulare deschise). Ce doriți să faceți?"
+        />
       </div>
     </div>
   );

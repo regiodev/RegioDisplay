@@ -1,8 +1,10 @@
 // Cale fișier: src/pages/EditPlaylistPage.jsx
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import apiClient from '../api/axios';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesDialog from '../components/UnsavedChangesDialog';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,14 +102,61 @@ function EditPlaylistPage() {
   const [loading, setLoading] = useState(!isNew);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Initial data for unsaved changes detection
+  const [initialData, setInitialData] = useState({});
+
+  // Current form data for comparison
+  const currentData = useMemo(() => ({
+    name,
+    items: items.map(item => ({
+      mediafile_id: item.mediafile_id,
+      duration: item.duration
+    })) // Only compare relevant data, not temporary IDs
+  }), [name, items]);
+
+  // Unsaved changes protection
+  const unsavedChanges = useUnsavedChanges(
+    initialData,
+    currentData,
+    async () => {
+      await handleSave();
+    },
+    {
+      ignoreFields: [],
+      enableBeforeUnload: true,
+      enableRouterProtection: true
+    }
+  );
+
   const fetchPlaylistDetails = useCallback(async () => {
-    if (isNew) return;
+    if (isNew) {
+      // Pentru playlist nou, setează datele inițiale goale
+      const initialFormData = {
+        name: '',
+        items: []
+      };
+      setInitialData(initialFormData);
+      return;
+    }
+
     try {
       const response = await apiClient.get(`/playlists/${playlistId}`);
-      setName(response.data.name);
+      const playlistName = response.data.name;
       // Asigurăm un ID unic pentru fiecare element pentru cheile React
       const playlistItemsWithUniqueIds = response.data.items.map(item => ({ ...item, id: Math.random() }));
+      
+      setName(playlistName);
       setItems(playlistItemsWithUniqueIds);
+
+      // Setează datele inițiale pentru detectarea modificărilor
+      const initialFormData = {
+        name: playlistName,
+        items: playlistItemsWithUniqueIds.map(item => ({
+          mediafile_id: item.mediafile_id,
+          duration: item.duration
+        }))
+      };
+      setInitialData(initialFormData);
     } catch {
       toast({ variant: "destructive", title: "Eroare", description: "Playlist-ul nu a putut fi încărcat." });
       navigate('/playlists');
@@ -190,6 +239,10 @@ function EditPlaylistPage() {
       } else {
         await apiClient.put(`/playlists/${playlistId}`, playlistData);
       }
+      
+      // Actualizează datele inițiale după salvare cu succes
+      unsavedChanges.updateInitialData(currentData);
+      
       toast({ title: "Succes!", description: "Playlist-ul a fost salvat." });
       navigate('/playlists');
     } catch (error) {
@@ -239,11 +292,13 @@ function EditPlaylistPage() {
           
           {/* Action buttons */}
           <div className="flex items-center gap-4">
-            <Button variant="outline" asChild>
-              <Link to="/playlists">
-                <ArrowLeft className="mr-2 h-4 w-4"/> 
-                Înapoi la listă
-              </Link>
+            <Button 
+              variant="outline" 
+              onClick={() => unsavedChanges.attemptAction(() => navigate('/playlists'), 'navigate')}
+              disabled={isSaving}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4"/> 
+              Înapoi la listă
             </Button>
             <Button onClick={handleSave} disabled={isSaving} size="lg">
               {isSaving ? (
@@ -373,6 +428,12 @@ function EditPlaylistPage() {
             </Card>
           </div>
         </div>
+
+        {/* Unsaved Changes Dialog */}
+        <UnsavedChangesDialog
+          {...unsavedChanges.confirmDialogProps}
+          isSaving={isSaving}
+        />
       </div>
     </div>
   );

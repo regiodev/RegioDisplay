@@ -36,3 +36,5 @@ watchfiles==1.1.0
 websockets==15.0.1
 numpy==1.24.3
 ffmpeg-python==0.2.0
+validators==0.22.0
+playwright==1.40.0
