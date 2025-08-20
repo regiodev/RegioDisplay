@@ -826,6 +826,17 @@ function MediaPage() {
     setIsWebLoading(true);
 
     try {
+      // Validare URL HTTPS pentru securitate
+      if (!webFormData.web_url.startsWith('https://') && !webFormData.web_url.startsWith('http://localhost') && !webFormData.web_url.startsWith('http://127.0.0.1') && !webFormData.web_url.match(/^http:\/\/192\.168\.\d+\.\d+/) && !webFormData.web_url.match(/^http:\/\/10\.\d+\.\d+\.\d+/)) {
+        toast({
+          variant: 'destructive',
+          title: 'URL invalid',
+          description: 'Pentru securitate, doar URL-urile HTTPS sunt permise, cu excepția rețelelor locale (localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x).',
+        });
+        setIsWebLoading(false);
+        return;
+      }
+      
       await apiClient.post('/media/web-content', webFormData);
       
       toast({
@@ -993,6 +1004,16 @@ function MediaPage() {
       // Pentru conținut web
       if (editingFile.type === 'web/html') {
         if (editFormData.web_url !== editingFile.web_url) {
+          // Validare URL HTTPS pentru securitate
+          if (!editFormData.web_url.startsWith('https://') && !editFormData.web_url.startsWith('http://localhost') && !editFormData.web_url.startsWith('http://127.0.0.1') && !editFormData.web_url.match(/^http:\/\/192\.168\.\d+\.\d+/) && !editFormData.web_url.match(/^http:\/\/10\.\d+\.\d+\.\d+/)) {
+            toast({
+              variant: 'destructive',
+              title: 'URL invalid',
+              description: 'Pentru securitate, doar URL-urile HTTPS sunt permise, cu excepția rețelelor locale (localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x).',
+            });
+            setIsEditLoading(false);
+            return;
+          }
           payload.web_url = editFormData.web_url;
         }
         if (editFormData.web_refresh_interval !== editingFile.web_refresh_interval) {

@@ -5,5 +5,21 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    
+    <!-- Permite trafic HTTP pentru rețelele locale și dezvoltare -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Rețele locale private -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- Rețeaua 192.168.x.x -->
+        <domain includeSubdomains="false">192.168.1.1</domain>
+        <domain includeSubdomains="false">192.168.0.1</domain>
+        <domain includeSubdomains="false">192.168.1.254</domain>
+        <domain includeSubdomains="false">192.168.0.254</domain>
+        <!-- Rețeaua 10.x.x.x -->
+        <domain includeSubdomains="false">10.0.0.1</domain>
+        <domain includeSubdomains="false">10.1.1.1</domain>
+        <!-- Adaugă alte domenii locale specifice dacă este necesar -->
+    </domain-config>
 
 </network-security-config>

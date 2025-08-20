@@ -44,10 +44,16 @@ fun SettingsMenu(
     onClose: () -> Unit,
     onExitRequest: () -> Unit,
     currentRotation: Int,
-    playerViewModel: PlayerViewModel // Adăugăm ViewModel-ul
+    playerViewModel: PlayerViewModel,
+    onBackHandlingChanged: (Boolean) -> Unit // Callback pentru a anunța dacă putem gestiona back
 ) {
     val menuFocusRequester = remember { FocusRequester() }
     var showLanguageDialog by remember { mutableStateOf(false) }
+
+    // Anunță MainActivity dacă avem sub-dialoguri deschise care pot gestiona back
+    LaunchedEffect(showLanguageDialog) {
+        onBackHandlingChanged(showLanguageDialog)
+    }
 
     // Colectăm stările pentru Kiosk Mode din ViewModel
     val autoStartEnabled by playerViewModel.autoStartOnBoot.collectAsState()

@@ -217,15 +217,23 @@ private fun WebPlayer(item: LocalMediaItem, rotationDegrees: Float) {
         AndroidView(
             factory = { ctx ->
                 android.webkit.WebView(ctx).apply {
-                    // Configurări WebView
+                    // Configurări WebView optimizate pentru compatibilitate
                     settings.apply {
                         javaScriptEnabled = true
                         domStorageEnabled = true
+                        // Configurare echilibrată pentru pagini simple și complexe
                         loadWithOverviewMode = true
                         useWideViewPort = true
+                        // Permite auto-scaling dar cu limite
                         setSupportZoom(false)
                         builtInZoomControls = false
                         displayZoomControls = false
+                        // Layout algorithm pentru WebView consistency
+                        layoutAlgorithm = android.webkit.WebSettings.LayoutAlgorithm.NORMAL
+                        // Text sizing automat pentru o mai bună redare
+                        textZoom = 100
+                        // Force-enable hardware acceleration pentru performance
+                        setRenderPriority(android.webkit.WebSettings.RenderPriority.HIGH)
                         // Securitate
                         allowFileAccess = false
                         allowContentAccess = false
@@ -244,6 +252,23 @@ private fun WebPlayer(item: LocalMediaItem, rotationDegrees: Float) {
                         override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
                             isLoading = false
                             android.util.Log.d("WebPlayer", "Page loaded successfully: $url")
+                            
+                            // Post-load optimizations pentru layout consistent
+                            view?.post {
+                                // Forțează re-layout pentru pagini cu probleme de aliniere
+                                view.evaluateJavascript("""
+                                    (function() {
+                                        // Fix pentru viewport și scroll issues
+                                        document.body.style.margin = '0';
+                                        document.body.style.padding = '0';
+                                        document.documentElement.style.margin = '0';
+                                        document.documentElement.style.padding = '0';
+                                        
+                                        // Scroll la top pentru consistență
+                                        window.scrollTo(0, 0);
+                                    })();
+                                """, null)
+                            }
                         }
                         
                         override fun onReceivedError(view: android.webkit.WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {

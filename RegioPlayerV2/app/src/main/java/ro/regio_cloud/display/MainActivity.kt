@@ -73,6 +73,7 @@ class MainActivity : AppCompatActivity() {
 
     private var isMenuVisible by mutableStateOf(false)
     private var showExitDialog by mutableStateOf(false)
+    private var canMenuHandleBack by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -152,7 +153,10 @@ class MainActivity : AppCompatActivity() {
                                 showExitDialog = true
                             },
                             currentRotation = rotation,
-                            playerViewModel = playerViewModel // Am adăugat viewModel-ul
+                            playerViewModel = playerViewModel,
+                            onBackHandlingChanged = { canHandle ->
+                                canMenuHandleBack = canHandle
+                            }
                         )
                     }
 
@@ -218,6 +222,34 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        when {
+            // Dacă dialogul de exit este deschis, îl închide
+            showExitDialog -> {
+                showExitDialog = false
+                android.util.Log.d("MainActivity", "🔙 Back pressed: Închis dialog exit")
+            }
+            // Dacă meniul este deschis și NU poate gestiona back intern
+            isMenuVisible && !canMenuHandleBack -> {
+                isMenuVisible = false
+                android.util.Log.d("MainActivity", "🔙 Back pressed: Închis meniu")
+            }
+            // Dacă meniul este deschis și POATE gestiona back intern, lăsăm să se gestioneze singur
+            // (de exemplu, închiderea dialogului de limbă înainte de închiderea meniului)
+            isMenuVisible && canMenuHandleBack -> {
+                android.util.Log.d("MainActivity", "🔙 Back pressed: Gestionat intern de meniu (închidere dialog)")
+                // Resetează capability flag pentru următoarea apăsare
+                canMenuHandleBack = false
+            }
+            // Dacă suntem la rădăcină (fără meniu/dialog deschis), afișează dialogul de confirmare
+            else -> {
+                showExitDialog = true
+                android.util.Log.d("MainActivity", "🔙 Back pressed: Afișat dialog confirmare ieșire")
+            }
+        }
     }
 
     private fun startPeriodicSync() {

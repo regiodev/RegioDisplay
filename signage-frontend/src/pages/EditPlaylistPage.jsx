@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import Pagination from '@/components/Pagination';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Plus, Trash2, ArrowUp, ArrowDown, ListMusic, Image, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, ArrowUp, ArrowDown, ListMusic, Image, Save, Loader2, Globe, File } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -19,12 +19,44 @@ const ITEMS_PER_PAGE = 10;
 const AvailableMediaItem = ({ item, onAdd, isAdded }) => {
   const mediaServeUrl = `${apiClient.defaults.baseURL}/media/serve/${item.id}`;
   const thumbnailBaseUrl = `${apiClient.defaults.baseURL}/media/thumbnails/`;
-  const imageUrl = item.type.startsWith('image/') ? mediaServeUrl : `${thumbnailBaseUrl}${item.thumbnail_path}`;
+  
+  // Determină sursa imaginii - prioritizează thumbnail-ul dacă există
+  const getImageSrc = () => {
+    if (item.thumbnail_path) {
+      return `${thumbnailBaseUrl}${item.thumbnail_path}`;
+    }
+    if (item.type.startsWith('image/')) {
+      return mediaServeUrl;
+    }
+    return null;
+  };
+
+  const imageSrc = getImageSrc();
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/30 transition-colors border border-border/50">
       <div className="relative">
-        <img src={imageUrl} alt={item.filename} className="w-12 h-12 object-cover rounded-lg bg-muted flex-shrink-0" />
+        {imageSrc ? (
+          <img 
+            src={imageSrc} 
+            alt={item.filename} 
+            className="w-12 h-12 object-cover rounded-lg bg-muted flex-shrink-0"
+            onError={(e) => {
+              // Fallback la imaginea originală dacă thumbnail-ul eșuează
+              if (item.type.startsWith('image/') && item.thumbnail_path && e.target.src.includes('thumbnails')) {
+                e.target.src = mediaServeUrl;
+              }
+            }}
+          />
+        ) : (
+          <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
+            {item.type === 'web/html' ? (
+              <Globe className="w-6 h-6 text-blue-500" />
+            ) : (
+              <File className="w-6 h-6 text-muted-foreground" />
+            )}
+          </div>
+        )}
         <div className="absolute -top-1 -right-1 p-1 bg-purple-100 dark:bg-purple-900/30 rounded-full">
           <Image className="h-3 w-3 text-purple-600 dark:text-purple-400" />
         </div>
@@ -48,13 +80,45 @@ const AvailableMediaItem = ({ item, onAdd, isAdded }) => {
 const PlaylistItem = ({ item, onRemove, onDurationChange, onMove }) => {
   const mediaServeUrl = `${apiClient.defaults.baseURL}/media/serve/${item.media_file.id}`;
   const thumbnailBaseUrl = `${apiClient.defaults.baseURL}/media/thumbnails/`;
-  const imageUrl = item.media_file.type.startsWith('image/') ? mediaServeUrl : `${thumbnailBaseUrl}${item.media_file.thumbnail_path}`;
+  
+  // Determină sursa imaginii - prioritizează thumbnail-ul dacă există
+  const getImageSrc = () => {
+    if (item.media_file.thumbnail_path) {
+      return `${thumbnailBaseUrl}${item.media_file.thumbnail_path}`;
+    }
+    if (item.media_file.type.startsWith('image/')) {
+      return mediaServeUrl;
+    }
+    return null;
+  };
+
+  const imageSrc = getImageSrc();
 
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 rounded-lg bg-muted/20 hover:bg-muted/30 transition-colors border border-border/50">
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <div className="relative">
-          <img src={imageUrl} alt={item.media_file.filename} className="w-14 h-14 object-cover rounded-lg bg-muted flex-shrink-0" />
+          {imageSrc ? (
+            <img 
+              src={imageSrc} 
+              alt={item.media_file.filename} 
+              className="w-14 h-14 object-cover rounded-lg bg-muted flex-shrink-0"
+              onError={(e) => {
+                // Fallback la imaginea originală dacă thumbnail-ul eșuează
+                if (item.media_file.type.startsWith('image/') && item.media_file.thumbnail_path && e.target.src.includes('thumbnails')) {
+                  e.target.src = mediaServeUrl;
+                }
+              }}
+            />
+          ) : (
+            <div className="w-14 h-14 bg-muted rounded-lg flex items-center justify-center">
+              {item.media_file.type === 'web/html' ? (
+                <Globe className="w-7 h-7 text-blue-500" />
+              ) : (
+                <File className="w-7 h-7 text-muted-foreground" />
+              )}
+            </div>
+          )}
           <div className="absolute -bottom-1 -right-1 p-1 bg-green-100 dark:bg-green-900/30 rounded-full">
             <ListMusic className="h-3 w-3 text-green-600 dark:text-green-400" />
           </div>

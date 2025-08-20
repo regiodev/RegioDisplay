@@ -1479,8 +1479,39 @@ async def create_web_content(
     if not validators.url(payload.web_url):
         raise HTTPException(status_code=400, detail="URL-ul furnizat nu este valid")
     
-    # Parse URL pentru a extrage domeniul pentru filename implicit
+    # Validare HTTPS pentru securitate (permite HTTP doar pentru rețelele locale)
     parsed_url = urlparse(payload.web_url)
+    is_local = (
+        parsed_url.hostname in ['localhost', '127.0.0.1'] or
+        (parsed_url.hostname and (
+            parsed_url.hostname.startswith('192.168.') or 
+            parsed_url.hostname.startswith('10.') or
+            parsed_url.hostname.startswith('172.16.') or
+            parsed_url.hostname.startswith('172.17.') or
+            parsed_url.hostname.startswith('172.18.') or
+            parsed_url.hostname.startswith('172.19.') or
+            parsed_url.hostname.startswith('172.20.') or
+            parsed_url.hostname.startswith('172.21.') or
+            parsed_url.hostname.startswith('172.22.') or
+            parsed_url.hostname.startswith('172.23.') or
+            parsed_url.hostname.startswith('172.24.') or
+            parsed_url.hostname.startswith('172.25.') or
+            parsed_url.hostname.startswith('172.26.') or
+            parsed_url.hostname.startswith('172.27.') or
+            parsed_url.hostname.startswith('172.28.') or
+            parsed_url.hostname.startswith('172.29.') or
+            parsed_url.hostname.startswith('172.30.') or
+            parsed_url.hostname.startswith('172.31.')
+        ))
+    )
+    
+    if not payload.web_url.startswith('https://') and not is_local:
+        raise HTTPException(
+            status_code=400, 
+            detail="Pentru securitate, doar URL-urile HTTPS sunt permise, cu excepția rețelelor locale (localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x, 172.16.x.x-172.31.x.x)"
+        )
+    
+    # Extrage domeniul pentru filename implicit (parsed_url deja definit mai sus)
     domain_name = parsed_url.netloc or "web-content"
     
     # Creează înregistrarea MediaFile pentru conținutul web
@@ -1626,6 +1657,38 @@ async def update_media_file(
             # Validează noul URL
             if not validators.url(payload.web_url):
                 raise HTTPException(status_code=400, detail="URL-ul furnizat nu este valid")
+            
+            # Validare HTTPS pentru securitate (permite HTTP doar pentru rețelele locale)
+            parsed_url = urlparse(payload.web_url)
+            is_local = (
+                parsed_url.hostname in ['localhost', '127.0.0.1'] or
+                (parsed_url.hostname and (
+                    parsed_url.hostname.startswith('192.168.') or 
+                    parsed_url.hostname.startswith('10.') or
+                    parsed_url.hostname.startswith('172.16.') or
+                    parsed_url.hostname.startswith('172.17.') or
+                    parsed_url.hostname.startswith('172.18.') or
+                    parsed_url.hostname.startswith('172.19.') or
+                    parsed_url.hostname.startswith('172.20.') or
+                    parsed_url.hostname.startswith('172.21.') or
+                    parsed_url.hostname.startswith('172.22.') or
+                    parsed_url.hostname.startswith('172.23.') or
+                    parsed_url.hostname.startswith('172.24.') or
+                    parsed_url.hostname.startswith('172.25.') or
+                    parsed_url.hostname.startswith('172.26.') or
+                    parsed_url.hostname.startswith('172.27.') or
+                    parsed_url.hostname.startswith('172.28.') or
+                    parsed_url.hostname.startswith('172.29.') or
+                    parsed_url.hostname.startswith('172.30.') or
+                    parsed_url.hostname.startswith('172.31.')
+                ))
+            )
+            
+            if not payload.web_url.startswith('https://') and not is_local:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Pentru securitate, doar URL-urile HTTPS sunt permise, cu excepția rețelelor locale (localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x, 172.16.x.x-172.31.x.x)"
+                )
             
             # Dacă URL-ul se schimbă, regenerează thumbnail-ul
             if media_file.web_url != payload.web_url:
