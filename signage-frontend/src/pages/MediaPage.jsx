@@ -45,6 +45,7 @@ import {
   Edit,
   Save,
   X,
+  Download,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiClient from '../api/axios';
@@ -911,6 +912,44 @@ function MediaPage() {
     }));
   };
 
+  // --- FUNCȚII PENTRU DOWNLOAD ---
+  const handleDownload = async (file) => {
+    try {
+      // Pentru conținutul web, nu poate fi descărcat
+      if (file.type === 'web/html') {
+        toast({
+          title: "Descărcare indisponibilă",
+          description: "Conținutul web nu poate fi descărcat.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Creează URL pentru descărcare
+      const downloadUrl = `/api/media/serve/${file.id}`;
+      
+      // Creează un link temporar și simulează click-ul pentru descărcare
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = file.filename || `media_${file.id}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({
+        title: "Descărcare inițiată",
+        description: `Descărcarea fișierului "${file.filename}" a început.`,
+      });
+    } catch (error) {
+      console.error('Eroare la descărcare:', error);
+      toast({
+        title: "Eroare la descărcare",
+        description: "Nu s-a putut iniția descărcarea fișierului.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // --- FUNCȚII PENTRU EDITARE ---
   const handleEditClick = (file) => {
     const initialData = {
@@ -1529,6 +1568,16 @@ function MediaPage() {
                           variant="outline"
                           size="icon"
                           className="h-8 w-8 shadow-lg bg-white/90 dark:bg-gray-900/90"
+                          onClick={() => handleDownload(file)}
+                          disabled={file.type === 'web/html'}
+                          title={file.type === 'web/html' ? 'Conținutul web nu poate fi descărcat' : 'Descarcă fișierul'}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 shadow-lg bg-white/90 dark:bg-gray-900/90"
                           onClick={() => handleEditClick(file)}
                         >
                           <Edit className="h-4 w-4" />
@@ -1657,6 +1706,16 @@ function MediaPage() {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex justify-end gap-2">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleDownload(file)}
+                                disabled={file.type === 'web/html'}
+                                className="h-8 w-8 hover:bg-green-100 dark:hover:bg-green-900/30"
+                                title={file.type === 'web/html' ? 'Conținutul web nu poate fi descărcat' : 'Descarcă fișierul'}
+                              >
+                                <Download className="h-4 w-4 text-green-500" />
+                              </Button>
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
