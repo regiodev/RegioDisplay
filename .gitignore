@@ -42,3 +42,9 @@ RegioPlayerV2/build/
 RegioPlayerV2/app/build/
 RegioPlayerV2/app/release/
 RegioPlayerV2/local.properties
+
+# win-player
+win-player/deployment/
+win-player/tests/
+win-player/tools/
+win-player/assets/
