@@ -56,12 +56,12 @@
         <!-- Pairing Screen -->
         <views:PairingScreen x:Name="PairingContent"
                             DataContext="{Binding PairingViewModel}"
-                            Visibility="{Binding IsPairing, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            Visibility="{Binding Path=DataContext.IsPairing, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
         <!-- Player Screen -->
         <views:PlayerScreen x:Name="PlayerContent"
                            DataContext="{Binding PlayerViewModel}"
-                           Visibility="{Binding IsPlaying, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                           Visibility="{Binding Path=DataContext.IsPlaying, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
         <!-- Settings Panel (Hidden by default) -->
         <Border x:Name="SettingsContent"

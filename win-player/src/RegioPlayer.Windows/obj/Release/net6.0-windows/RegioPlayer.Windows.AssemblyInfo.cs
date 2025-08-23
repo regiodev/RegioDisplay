@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RegioPlayer.Windows")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+abe4ccf8f11ed622fdb4d13e336f4872004092ec")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+04a3a52251233f82d9cb7f2d08bac6f00441f41f")]
 [assembly: System.Reflection.AssemblyProductAttribute("RegioPlayer.Windows")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RegioPlayer.Windows")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

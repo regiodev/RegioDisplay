@@ -30,33 +30,55 @@ public class ApiService : IApiService
     {
         try
         {
+            // Backend expects ONLY unique_key and pairing_code - nothing else!
             var requestData = new
             {
                 unique_key = uniqueKey,
-                pairing_code = pairingCode,
-                device_type = "windows",
-                platform_version = Environment.OSVersion.ToString(),
-                app_version = "1.0.0"
+                pairing_code = pairingCode
             };
 
             var json = JsonSerializer.Serialize(requestData);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            _logger.LogInformation("Registering screen with key: {UniqueKey}", uniqueKey);
+            _logger.LogInformation("Registering screen with key: {UniqueKey}, pairing code: {PairingCode}", uniqueKey, pairingCode);
 
             var response = await _httpClient.PostAsync($"{_baseUrl}/client/register", content);
             var responseContent = await response.Content.ReadAsStringAsync();
+            
+            _logger.LogInformation("Register response status: {StatusCode}, content: {Content}", response.StatusCode, responseContent);
 
             if (response.IsSuccessStatusCode)
             {
-                var result = JsonSerializer.Deserialize<RegisterResponse>(responseContent);
-                _logger.LogInformation("Screen registration successful");
-                return result ?? new RegisterResponse { Success = false, Message = "Invalid response format" };
+                // Backend returns JSON like: {"detail": "Ecran înregistrat cu succes, se așteaptă împerecherea."}
+                try 
+                {
+                    var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                    var detail = jsonResponse.GetProperty("detail").GetString();
+                    
+                    _logger.LogInformation("Registration successful: {Detail}", detail);
+                    return new RegisterResponse { Success = true, Message = detail ?? "Registration successful" };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not parse registration response as JSON, treating as success");
+                    return new RegisterResponse { Success = true, Message = responseContent };
+                }
             }
             else
             {
-                _logger.LogWarning("Screen registration failed with status: {StatusCode}", response.StatusCode);
-                return new RegisterResponse { Success = false, Message = $"Registration failed: {response.StatusCode}" };
+                _logger.LogError("Registration failed with status {StatusCode}: {Content}", response.StatusCode, responseContent);
+                
+                // Try to parse error message from JSON
+                try
+                {
+                    var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                    var detail = jsonResponse.GetProperty("detail").GetString();
+                    return new RegisterResponse { Success = false, Message = detail ?? responseContent };
+                }
+                catch
+                {
+                    return new RegisterResponse { Success = false, Message = $"HTTP {response.StatusCode}: {responseContent}" };
+                }
             }
         }
         catch (Exception ex)
@@ -88,10 +110,17 @@ public class ApiService : IApiService
                 var responseContent = await response.Content.ReadAsStringAsync();
                 _logger.LogInformation("=== API DEBUG === Raw response: {Response}", responseContent);
                 
+                // Backend returns ClientPlaylistResponse directly, not wrapped in SyncResponse
                 var result = JsonSerializer.Deserialize<SyncResponse>(responseContent);
                 
-                _logger.LogInformation("=== API DEBUG === Deserialized - HasUpdates: {HasUpdates}, PlaylistName: '{Name}', Version: '{Version}'", 
-                    result?.HasUpdates, result?.Playlist?.Name, result?.Playlist?.PlaylistVersion);
+                _logger.LogInformation("=== API DEBUG === Deserialized - ID: {Id}, PlaylistName: '{Name}', Version: '{Version}'", 
+                    result?.Id, result?.Name, result?.PlaylistVersion);
+                
+                // If we got a response with ID > 0, it means we have updates
+                if (result != null)
+                {
+                    result.HasUpdates = result.Id > 0;
+                }
                 
                 return result ?? new SyncResponse { HasUpdates = false };
             }

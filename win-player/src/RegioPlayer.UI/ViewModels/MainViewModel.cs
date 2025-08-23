@@ -3,6 +3,7 @@ using RegioPlayer.Core.Common;
 using RegioPlayer.Core.Interfaces;
 using RegioPlayer.Core.Models;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace RegioPlayer.UI.ViewModels;
@@ -90,43 +91,43 @@ public class MainViewModel : ViewModelBase
     {
         try
         {
-            _logger.LogWarning("=== MAIN DEBUG === BYPASSING ALL SCREEN MANAGER - DIRECT PAIRING MODE");
+            _logger.LogInformation("Starting MainViewModel initialization...");
+            IsLoading = true;
+            StatusMessage = "Initializing...";
             
-            // COMPLETE BYPASS: Skip ScreenManager entirely and don't subscribe to events
-            StatusMessage = "Direct pairing mode - bypassing all backend";
-            IsLoading = false;
-            IsPairing = true;
-            IsPlaying = false;
-            ShowSettings = false;
+            // Initialize screen manager
+            await _screenManager.InitializeAsync();
             
-            _logger.LogWarning("=== MAIN DEBUG === UI States set - IsLoading: {IsLoading}, IsPairing: {IsPairing}, IsPlaying: {IsPlaying}, ShowSettings: {ShowSettings}", 
-                IsLoading, IsPairing, IsPlaying, ShowSettings);
-            
-            await PairingViewModel.InitializeAsync();
-            _logger.LogWarning("=== MAIN DEBUG === PairingViewModel initialized, UI should show pairing screen");
-            
-            // Force UI update
-            OnPropertyChanged(nameof(IsLoading));
-            OnPropertyChanged(nameof(IsPairing));
-            OnPropertyChanged(nameof(IsPlaying));
-            OnPropertyChanged(nameof(ShowSettings));
-            
-            _logger.LogWarning("=== MAIN DEBUG === Forced property change notifications sent");
-            return;
+            // Subscribe to screen manager events
+            _screenManager.PlaylistUpdated += OnPlaylistUpdated;
+            _screenManager.RotationChanged += OnRotationChanged; 
+            _screenManager.StatusChanged += OnStatusChanged;
+            _screenManager.ScreenDeactivated += OnScreenDeactivated;
             
             if (_screenManager.CurrentScreen?.IsActive == true)
             {
                 _logger.LogInformation("=== MAIN DEBUG === Screen is active - starting player mode");
                 StatusMessage = "Starting player...";
-                await _screenManager.StartAsync();
+                
+                try 
+                {
+                    await _screenManager.StartAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to start screen manager (possibly offline) - continuing with cached data");
+                }
                 
                 if (_screenManager.CurrentPlaylist != null)
                 {
+                    _logger.LogInformation("Using cached playlist for offline playback: {PlaylistName}", _screenManager.CurrentPlaylist.Name);
+                    StatusMessage = "Running offline with cached content";
                     await StartPlayback();
                 }
                 else
                 {
-                    StatusMessage = "Waiting for playlist...";
+                    StatusMessage = "No cached playlist available - check connection";
+                    _logger.LogWarning("No cached playlist available for offline mode");
                 }
             }
             else
@@ -192,8 +193,25 @@ public class MainViewModel : ViewModelBase
 
     private void OnStatusChanged(string status)
     {
-        StatusMessage = status;
-        _logger.LogDebug("Status changed: {Status}", status);
+        // Filter out non-essential status updates to avoid unnecessary UI refreshes
+        var ignoredStatusMessages = new[]
+        {
+            "Screen registered successfully",
+            "Registration successful", 
+            "Sync completed",
+            "Playlist up to date",
+            "Connected"
+        };
+
+        if (!ignoredStatusMessages.Any(ignored => status.Contains(ignored, StringComparison.OrdinalIgnoreCase)))
+        {
+            StatusMessage = status;
+            _logger.LogDebug("Status changed: {Status}", status);
+        }
+        else
+        {
+            _logger.LogDebug("Status update filtered (no UI change): {Status}", status);
+        }
     }
 
     private async void OnPairingCompleted()
@@ -208,17 +226,32 @@ public class MainViewModel : ViewModelBase
 
             await _screenManager.StartAsync();
             
-            // Wait a moment for initial sync
-            await Task.Delay(2000);
+            StatusMessage = "Synchronizing playlist...";
+            
+            // Force a sync to get the latest playlist
+            await _screenManager.SyncAsync();
+            
+            // Wait a bit more if needed and check again
+            int retries = 0;
+            while (_screenManager.CurrentPlaylist == null && retries < 10)
+            {
+                await Task.Delay(1000);
+                await _screenManager.SyncAsync();
+                retries++;
+                _logger.LogDebug("Waiting for playlist... attempt {Retry}/10", retries + 1);
+            }
             
             if (_screenManager.CurrentPlaylist != null)
             {
+                _logger.LogInformation("Playlist loaded successfully: {PlaylistName} with {ItemCount} items", 
+                    _screenManager.CurrentPlaylist.Name, _screenManager.CurrentPlaylist.Items?.Count ?? 0);
                 await StartPlayback();
             }
             else
             {
-                StatusMessage = "Waiting for playlist...";
+                StatusMessage = "No playlist assigned to this screen";
                 IsLoading = false;
+                _logger.LogWarning("No playlist received after pairing completion");
             }
         }
         catch (Exception ex)

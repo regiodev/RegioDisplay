@@ -20,6 +20,7 @@ public interface IScreenManager
     Task StartAsync();
     Task StopAsync();
     Task ClearCurrentScreenAsync();
+    Task SaveCurrentScreenAsync();
     Task<string> GenerateUniqueKeyAsync();
     Task<string> GeneratePairingCodeAsync();
 }

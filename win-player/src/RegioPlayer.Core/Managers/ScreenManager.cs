@@ -94,12 +94,13 @@ public class ScreenManager : IScreenManager
             
             if (result.Success)
             {
-                CurrentScreen.IsActive = true;
+                // Don't set IsActive = true here! Registration success != Screen activation
+                // Screen becomes active only through sync when backend confirms pairing
                 CurrentScreen.LastSyncAt = DateTime.UtcNow;
                 await _storageService.SaveScreenAsync(CurrentScreen);
                 
                 StatusChanged?.Invoke("Screen registered successfully");
-                _logger.LogInformation("Screen registered successfully");
+                _logger.LogInformation("Screen registered successfully - waiting for pairing");
                 
                 return true;
             }
@@ -159,6 +160,14 @@ public class ScreenManager : IScreenManager
             if (syncResult.HasUpdates && syncResult.Playlist != null)
             {
                 _logger.LogInformation("Playlist updates available. Version: {Version}", syncResult.Playlist.PlaylistVersion);
+                
+                // Screen is now active if it received a valid playlist
+                if (!CurrentScreen.IsActive)
+                {
+                    CurrentScreen.IsActive = true;
+                    await _storageService.SaveScreenAsync(CurrentScreen);
+                    _logger.LogInformation("Screen activated after receiving playlist");
+                }
                 
                 // Convert API response to internal model
                 var newPlaylist = new Playlist
@@ -414,6 +423,15 @@ public class ScreenManager : IScreenManager
         {
             _logger.LogError(ex, "Failed to clear current screen");
             throw;
+        }
+    }
+
+    public async Task SaveCurrentScreenAsync()
+    {
+        if (CurrentScreen != null)
+        {
+            await _storageService.SaveScreenAsync(CurrentScreen);
+            _logger.LogDebug("Saved current screen to storage");
         }
     }
 

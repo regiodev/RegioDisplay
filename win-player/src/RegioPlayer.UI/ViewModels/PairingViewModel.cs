@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using RegioPlayer.Core.Common;
 using RegioPlayer.Core.Interfaces;
+using RegioPlayer.Core.Models;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,18 +63,37 @@ public class PairingViewModel : ViewModelBase
     {
         try
         {
-            _logger.LogWarning("=== PAIRING DEBUG === PairingViewModel.InitializeAsync called");
+            _logger.LogInformation("Initializing PairingViewModel...");
+            StatusMessage = "Loading existing pairing code...";
             
-            // BYPASS: Generate dummy codes for testing
-            StatusMessage = "Generating pairing code...";
-            PairingCode = GenerateDummyPairingCode();
-            UniqueKey = GenerateDummyUniqueKey();
-            IsPairing = true;
-            StatusMessage = "Ready for pairing - TESTING MODE";
-            
-            _logger.LogWarning("=== PAIRING DEBUG === Generated PairingCode: {Code}, UniqueKey: {Key}", PairingCode, UniqueKey);
-            _logger.LogWarning("=== PAIRING DEBUG === IsPairing set to: {IsPairing}", IsPairing);
-            _logger.LogWarning("=== PAIRING DEBUG === PairingViewModel initialization complete");
+            // Register with backend (this will create screen if not exists, or use existing)
+            var registered = await _screenManager.RegisterAsync();
+            if (registered && _screenManager.CurrentScreen != null)
+            {
+                // Use the existing/persistent pairing code from storage
+                UniqueKey = _screenManager.CurrentScreen.UniqueKey;
+                PairingCode = _screenManager.CurrentScreen.PairingCode;
+                
+                // Verify we have valid codes - if not, generate them
+                if (string.IsNullOrEmpty(PairingCode) || string.IsNullOrEmpty(UniqueKey))
+                {
+                    _logger.LogWarning("Missing pairing code or unique key - generating new ones");
+                    await GenerateNewCodesAsync();
+                    return; // GenerateNewCodesAsync will set the proper status
+                }
+                
+                _logger.LogInformation("Using persistent pairing code: {PairingCode}", PairingCode);
+                
+                StatusMessage = "Ready for pairing";
+                IsPairing = true;
+                await StartPairingMonitorAsync();
+            }
+            else
+            {
+                StatusMessage = "Failed to register screen - generating offline codes";
+                _logger.LogWarning("Backend registration failed - generating codes for offline use");
+                await GenerateNewCodesAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -82,22 +102,6 @@ public class PairingViewModel : ViewModelBase
         }
     }
 
-    private string GenerateDummyPairingCode()
-    {
-        var random = new Random();
-        var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        var code = "";
-        for (int i = 0; i < 6; i++)
-        {
-            code += chars[random.Next(chars.Length)];
-        }
-        return code;
-    }
-
-    private string GenerateDummyUniqueKey()
-    {
-        return Guid.NewGuid().ToString();
-    }
 
     public async Task GenerateNewCodesAsync()
     {
@@ -105,23 +109,48 @@ public class PairingViewModel : ViewModelBase
         {
             StatusMessage = "Generating new pairing code...";
             
-            UniqueKey = await _screenManager.GenerateUniqueKeyAsync();
-            PairingCode = await _screenManager.GeneratePairingCodeAsync();
+            // Stop pairing monitor to avoid interference
+            await StopPairingMonitorAsync();
+            
+            // Generate new codes for the current screen
+            var newUniqueKey = await _screenManager.GenerateUniqueKeyAsync();
+            var newPairingCode = await _screenManager.GeneratePairingCodeAsync();
             
             _logger.LogInformation("Generated new pairing code: {PairingCode} for key: {UniqueKey}", 
-                PairingCode, UniqueKey);
+                newPairingCode, newUniqueKey);
 
-            StatusMessage = "Ready for pairing";
-
-            // Register the screen with new credentials
-            var registered = await _screenManager.RegisterAsync();
-            if (registered)
+            // Update current screen with new codes
+            if (_screenManager.CurrentScreen != null)
             {
-                await StartPairingMonitorAsync();
+                _screenManager.CurrentScreen.UniqueKey = newUniqueKey;
+                _screenManager.CurrentScreen.PairingCode = newPairingCode;
+                _screenManager.CurrentScreen.IsActive = false; // Reset activation status
+                
+                // Save updated screen to storage
+                await _screenManager.SaveCurrentScreenAsync();
             }
             else
             {
-                StatusMessage = "Failed to register screen";
+                // This case should not happen since RegisterAsync would create a screen,
+                // but handle it gracefully
+                _logger.LogWarning("No current screen exists when generating new codes - this should not happen");
+            }
+
+            // Update UI immediately (no status message changes)
+            UniqueKey = newUniqueKey;
+            PairingCode = newPairingCode;
+            StatusMessage = "Ready for pairing";
+
+            // Register the screen with new credentials (this might update status, but only once)
+            try
+            {
+                await _screenManager.RegisterAsync();
+                await StartPairingMonitorAsync();
+            }
+            catch (Exception regEx)
+            {
+                _logger.LogWarning(regEx, "Failed to register with backend - codes still generated for offline use");
+                // Don't change StatusMessage - keep "Ready for pairing"
             }
         }
         catch (Exception ex)
@@ -203,12 +232,8 @@ public class PairingViewModel : ViewModelBase
                 // Notify that pairing is complete
                 PairingCompleted?.Invoke();
             }
-            else
-            {
-                // Update status to show we're still waiting
-                var elapsed = DateTime.UtcNow.Subtract(_screenManager.CurrentScreen?.CreatedAt ?? DateTime.UtcNow);
-                StatusMessage = $"Waiting for pairing... ({elapsed.Minutes:D2}:{elapsed.Seconds:D2})";
-            }
+            // No else block - don't update StatusMessage unnecessarily to avoid flickering
+            // The status remains "Ready for pairing" until actual pairing happens
         }
         catch (Exception ex)
         {

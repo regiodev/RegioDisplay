@@ -39,6 +39,9 @@ public class SettingsViewModel : ViewModelBase
         ResetPairingCommand = new RelayCommand(async () => await ResetPairingAsync());
         CloseSettingsCommand = new RelayCommand(async () => await CloseSettingsAsync());
 
+        // Subscribe to screen manager events for dynamic updates
+        _screenManager.PlaylistUpdated += OnPlaylistUpdated;
+        
         // Initialize
         _ = LoadSettingsAsync();
     }
@@ -74,6 +77,64 @@ public class SettingsViewModel : ViewModelBase
     public string? CurrentPlaylistName => _screenManager.CurrentPlaylist?.Name;
     
     public int? CurrentPlaylistItemCount => _screenManager.CurrentPlaylist?.Items?.Count;
+
+    public string BackendConnectionStatus => CheckBackendConnection();
+    
+    public string InternetConnectionStatus => CheckInternetConnection();
+
+    public System.Windows.Media.Brush BackendConnectionColor
+    {
+        get
+        {
+            if (_screenManager.CurrentScreen?.IsActive == true)
+            {
+                return System.Windows.Media.Brushes.Green;
+            }
+            return System.Windows.Media.Brushes.Red;
+        }
+    }
+
+    public System.Windows.Media.Brush InternetConnectionColor
+    {
+        get
+        {
+            try
+            {
+                using var client = new System.Net.NetworkInformation.Ping();
+                var reply = client.Send("8.8.8.8", 3000);
+                return reply.Status == System.Net.NetworkInformation.IPStatus.Success ? 
+                    System.Windows.Media.Brushes.Green : System.Windows.Media.Brushes.Red;
+            }
+            catch
+            {
+                return System.Windows.Media.Brushes.Red;
+            }
+        }
+    }
+
+    private string CheckBackendConnection()
+    {
+        // Simple check based on screen status and WebSocket state
+        if (_screenManager.CurrentScreen?.IsActive == true)
+        {
+            return "Connected";
+        }
+        return "Disconnected";
+    }
+
+    private string CheckInternetConnection()
+    {
+        try
+        {
+            using var client = new System.Net.NetworkInformation.Ping();
+            var reply = client.Send("8.8.8.8", 3000);
+            return reply.Status == System.Net.NetworkInformation.IPStatus.Success ? "Online" : "Offline";
+        }
+        catch
+        {
+            return "Offline";
+        }
+    }
 
     // Commands
     public ICommand SaveSettingsCommand { get; }
@@ -154,6 +215,10 @@ public class SettingsViewModel : ViewModelBase
 
             StatusMessage = "Cache cleared successfully";
             _logger.LogInformation("Cache cleared by user");
+            
+            // Close settings after successful cache clear
+            await Task.Delay(1000);
+            SettingsClosed?.Invoke();
         }
         catch (Exception ex)
         {
@@ -166,21 +231,24 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
-    private Task RestartPlayerAsync()
+    private async Task RestartPlayerAsync()
     {
         try
         {
             StatusMessage = "Restarting player...";
             _logger.LogInformation("Player restart requested by user");
             
+            // Close settings before restart
+            await Task.Delay(500);
+            SettingsClosed?.Invoke();
+            
+            await Task.Delay(500);
             RestartRequested?.Invoke();
-            return Task.CompletedTask;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to restart player");
             StatusMessage = "Failed to restart player";
-            return Task.CompletedTask;
         }
     }
 
@@ -205,7 +273,12 @@ public class SettingsViewModel : ViewModelBase
             _logger.LogInformation("Pairing data reset completed");
 
             // Wait a moment for user to see the message
-            await Task.Delay(2000);
+            await Task.Delay(1500);
+            
+            // Close settings before pairing reset
+            SettingsClosed?.Invoke();
+            
+            await Task.Delay(500);
             
             // Trigger pairing reset which should restart the application
             PairingResetRequested?.Invoke();
@@ -266,5 +339,17 @@ public class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(CurrentScreenKey));
         OnPropertyChanged(nameof(CurrentPlaylistName));
         OnPropertyChanged(nameof(CurrentPlaylistItemCount));
+    }
+
+    private void OnPlaylistUpdated(Playlist playlist)
+    {
+        // Update the playlist-related properties in the settings panel
+        OnPropertyChanged(nameof(CurrentPlaylistName));
+        OnPropertyChanged(nameof(CurrentPlaylistItemCount));
+        OnPropertyChanged(nameof(BackendConnectionStatus));
+        OnPropertyChanged(nameof(InternetConnectionStatus));
+        OnPropertyChanged(nameof(BackendConnectionColor));
+        OnPropertyChanged(nameof(InternetConnectionColor));
+        _logger.LogDebug("Settings panel updated with new playlist: {PlaylistName}", playlist.Name);
     }
 }

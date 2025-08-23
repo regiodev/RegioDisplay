@@ -13,6 +13,7 @@ using Serilog;
 using System;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace RegioPlayer.UI;
 
@@ -36,11 +37,11 @@ public partial class App : Application
         services.AddSingleton<IMediaManager, MediaManager>();
         services.AddSingleton<IScreenManager, ScreenManager>();
 
-        // Register ViewModels
-        services.AddTransient<MainViewModel>();
+        // Register ViewModels in correct order (dependencies first)
+        services.AddTransient<SettingsViewModel>();
         services.AddTransient<PlayerViewModel>();
         services.AddTransient<PairingViewModel>();
-        services.AddTransient<SettingsViewModel>();
+        services.AddTransient<MainViewModel>();
 
         // Register Views
         services.AddTransient<MainWindow>();
@@ -64,9 +65,32 @@ public partial class App : Application
             KioskModeManager.PowerManagement.PreventSleep();
         }
 
-        // Launch main window
-        var mainWindow = _serviceProvider.GetService<MainWindow>();
-        mainWindow?.Show();
+        try 
+        {
+            // Launch main window
+            var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+            mainWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            var appLogger = _serviceProvider.GetService<ILogger<App>>();
+            appLogger?.LogError(ex, "Failed to create MainWindow - dependency injection error");
+            
+            // Create a simple error window to show the issue
+            var errorWindow = new Window
+            {
+                Title = "Startup Error",
+                Width = 600,
+                Height = 400,
+                Content = new TextBlock 
+                { 
+                    Text = $"Startup Error:\n\n{ex.Message}\n\nStack Trace:\n{ex.StackTrace}",
+                    Margin = new System.Windows.Thickness(20),
+                    TextWrapping = System.Windows.TextWrapping.Wrap
+                }
+            };
+            errorWindow.Show();
+        }
 
         base.OnStartup(e);
     }

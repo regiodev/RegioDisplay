@@ -101,6 +101,20 @@
                                 <TextBlock Text="Playlist Items: " Width="120"/>
                                 <TextBlock Text="{Binding CurrentPlaylistItemCount}"/>
                             </StackPanel>
+                            
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Backend Status: " Width="120"/>
+                                <TextBlock Text="{Binding BackendConnectionStatus}" 
+                                          Foreground="{Binding BackendConnectionColor}" 
+                                          FontWeight="Bold"/>
+                            </StackPanel>
+                            
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Internet Status: " Width="120"/>
+                                <TextBlock Text="{Binding InternetConnectionStatus}" 
+                                          Foreground="{Binding InternetConnectionColor}" 
+                                          FontWeight="Bold"/>
+                            </StackPanel>
                         </StackPanel>
                     </GroupBox>
 
