@@ -1,0 +1,13 @@
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\bin\Debug\net6.0\RegioPlayer.Core.deps.json
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\bin\Debug\net6.0\RegioPlayer.Core.dll
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\bin\Debug\net6.0\RegioPlayer.Core.pdb
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.csproj.AssemblyReference.cache
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.AssemblyInfoInputs.cache
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.AssemblyInfo.cs
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.csproj.CoreCompileInputs.cache
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.sourcelink.json
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.dll
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\refint\RegioPlayer.Core.dll
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\RegioPlayer.Core.pdb
+D:\RegioDisplay\win-player\src\RegioPlayer.Core\obj\Debug\net6.0\ref\RegioPlayer.Core.dll

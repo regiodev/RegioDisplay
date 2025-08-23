@@ -1,0 +1,96 @@
+<UserControl x:Class="RegioPlayer.UI.Views.PlayerScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:RegioPlayer.UI.Controls">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
+
+    <Grid Background="Black">
+        <!-- Video Player -->
+        <controls:VideoPlayerControl x:Name="VideoPlayer"
+                                   Source="{Binding CurrentMediaSource}"
+                                   IsPlaying="True"
+                                   Visibility="{Binding IsVideoContent, Converter={StaticResource BoolToVisibilityConverter}}"
+                                   MediaOpened="VideoPlayer_MediaOpened"
+                                   MediaEnded="VideoPlayer_MediaEnded"
+                                   MediaFailed="VideoPlayer_MediaFailed"/>
+
+        <!-- Image Player -->
+        <controls:ImagePlayerControl x:Name="ImagePlayer"
+                                   Source="{Binding CurrentMediaSource}"
+                                   Visibility="{Binding IsImageContent, Converter={StaticResource BoolToVisibilityConverter}}"
+                                   ImageLoaded="ImagePlayer_ImageLoaded"
+                                   ImageFailed="ImagePlayer_ImageFailed"/>
+
+        <!-- Web Content Player -->
+        <controls:WebContentControl x:Name="WebPlayer"
+                                  Source="{Binding CurrentMediaSource}"
+                                  RefreshInterval="{Binding CurrentItem.WebRefreshInterval}"
+                                  Visibility="{Binding IsWebContent, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  NavigationCompleted="WebPlayer_NavigationCompleted"
+                                  NavigationFailed="WebPlayer_NavigationFailed"/>
+
+        <!-- Cache Progress Indicator (shown during initial loading) -->
+        <Grid x:Name="CacheProgressOverlay"
+              Background="#CC000000"
+              Visibility="{Binding ShowCacheProgress, Converter={StaticResource BoolToVisibilityConverter}}"
+              Panel.ZIndex="100">
+            <StackPanel HorizontalAlignment="Center" 
+                       VerticalAlignment="Center"
+                       MinWidth="300">
+                
+                <TextBlock Text="Preparing Media Files..." 
+                           Foreground="White" 
+                           FontSize="20"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,20"/>
+                
+                <ProgressBar Value="{Binding CacheProgress}" 
+                           Maximum="100"
+                           Height="8"
+                           Background="#333"
+                           Foreground="#00ff88"
+                           Margin="0,0,0,10"/>
+                
+                <TextBlock Text="{Binding CacheProgress, StringFormat='{}{0:F1}%'}" 
+                           Foreground="#cccccc" 
+                           FontSize="14"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Debug Info Panel (only visible in debug builds) -->
+        <Border x:Name="DebugInfo"
+                Background="#80000000"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="20"
+                Padding="10"
+                CornerRadius="5"
+                Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock Text="DEBUG INFO" 
+                           Foreground="#FF6B6B" 
+                           FontSize="12" 
+                           FontWeight="Bold"
+                           Margin="0,0,0,5"/>
+                
+                <TextBlock Text="{Binding CurrentMediaType, StringFormat='Type: {0}'}" 
+                           Foreground="White" 
+                           FontSize="10"/>
+                
+                <TextBlock Text="{Binding CurrentItem.Duration, StringFormat='Duration: {0}s'}" 
+                           Foreground="White" 
+                           FontSize="10"/>
+                
+                <TextBlock Text="{Binding CurrentMediaSource, StringFormat='Source: {0}'}" 
+                           Foreground="White" 
+                           FontSize="10"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="200"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

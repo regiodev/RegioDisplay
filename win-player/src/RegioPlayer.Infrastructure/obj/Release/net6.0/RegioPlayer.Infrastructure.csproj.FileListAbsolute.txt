@@ -1,0 +1,16 @@
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\bin\Release\net6.0\RegioPlayer.Infrastructure.deps.json
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\bin\Release\net6.0\RegioPlayer.Infrastructure.dll
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\bin\Release\net6.0\RegioPlayer.Infrastructure.pdb
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\bin\Release\net6.0\RegioPlayer.Core.dll
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\bin\Release\net6.0\RegioPlayer.Core.pdb
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.csproj.AssemblyReference.cache
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.AssemblyInfoInputs.cache
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.AssemblyInfo.cs
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.csproj.CoreCompileInputs.cache
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.sourcelink.json
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPla.CCA74F88.Up2Date
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.dll
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\refint\RegioPlayer.Infrastructure.dll
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\RegioPlayer.Infrastructure.pdb
+D:\RegioDisplay\win-player\src\RegioPlayer.Infrastructure\obj\Release\net6.0\ref\RegioPlayer.Infrastructure.dll
